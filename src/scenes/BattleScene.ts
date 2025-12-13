@@ -69,6 +69,10 @@ export class BattleScene extends Phaser.Scene {
     private returnScene: string = 'MapScene';
     private playerPosition: { x: number; y: number } = { x: 0, y: 0 };
 
+    // パーティスプライト（FF6風：右側に斜め配置、最大4人）
+    private partySprites: Phaser.GameObjects.Sprite[] = [];
+    private partyCount: number = 1;  // 現在のパーティ人数（将来的に増加）
+
     // プレイヤーステータス
     private playerHp: number = 100;
     private playerMaxHp: number = 100;
@@ -115,6 +119,7 @@ export class BattleScene extends Phaser.Scene {
 
         this.createBackground();
         this.createEnemySprite();
+        this.createPartySprites();  // FF6風：パーティを右側に配置
         this.createUI();
         this.setupInput();
 
@@ -150,13 +155,17 @@ export class BattleScene extends Phaser.Scene {
     }
 
     /**
-     * 敵スプライトを作成
+     * 敵スプライトを作成（FF6風：左側に配置）
      */
     private createEnemySprite(): void {
+        // FF6風：敵は画面左側に配置
+        const enemyX = GAME_WIDTH * 0.25;
+        const enemyY = GAME_HEIGHT * 0.4;
+
         // スプライトを作成
         this.enemySprite = this.add.sprite(
-            GAME_WIDTH / 2,
-            GAME_HEIGHT * 0.35,
+            enemyX,
+            enemyY,
             this.enemy.spriteKey
         );
 
@@ -182,26 +191,93 @@ export class BattleScene extends Phaser.Scene {
     }
 
     /**
-     * UIを作成
+     * パーティスプライトを作成（FF6風：右側に斜め配置）
+     * 奥から手前に並ぶ（上から下へ、右から左へ）
+     */
+    private createPartySprites(): void {
+        // パーティスプライトをクリア
+        this.partySprites.forEach(sprite => sprite.destroy());
+        this.partySprites = [];
+
+        // パーティメンバーの配置（最大4人）
+        // FF6風：右上から左下に斜めに並ぶ
+        const baseX = GAME_WIDTH * 0.75;  // 右側
+        const baseY = GAME_HEIGHT * 0.2;  // 開始Y位置
+        const offsetX = -20;  // 各キャラの横オフセット（左へ）
+        const offsetY = 45;   // 各キャラの縦オフセット（下へ）
+
+        for (let i = 0; i < this.partyCount; i++) {
+            const x = baseX + (offsetX * i);
+            const y = baseY + (offsetY * i);
+
+            // プレイヤースプライトを作成（右向き固定）
+            const sprite = this.add.sprite(x, y, 'player');
+            sprite.setScale(2);
+
+            // 右向きのアイドルアニメーション（敵の方を向く）
+            // フレーム3は左向きなので、flipXで右向きに
+            sprite.setFrame(3);  // 左向きフレーム
+            sprite.setFlipX(true);  // 反転して右向き（敵の方向）に
+
+            // 待機モーション（軽い揺れ）
+            this.tweens.add({
+                targets: sprite,
+                y: y - 2,
+                duration: 800 + i * 100,  // 少しずつタイミングをずらす
+                yoyo: true,
+                repeat: -1,
+                ease: 'Sine.easeInOut'
+            });
+
+            this.partySprites.push(sprite);
+        }
+    }
+
+    /**
+     * UIを作成（FF6風レイアウト）
+     * - 左下: 敵名 + コマンドメニュー
+     * - 右: パーティステータス
      */
     private createUI(): void {
+        const uiY = GAME_HEIGHT - 90;  // UI開始Y位置
+
+        // ===== 左側：敵名 + コマンドメニュー =====
+        // 敵名ウィンドウ
+        const enemyNameBg = this.add.graphics();
+        enemyNameBg.fillStyle(0x000044, 0.9);
+        enemyNameBg.fillRect(5, uiY, 100, 22);
+        enemyNameBg.lineStyle(2, 0x4444aa, 1);
+        enemyNameBg.strokeRect(5, uiY, 100, 22);
+
+        // 敵HP テキスト（敵名ウィンドウ内）
+        this.enemyHpText = this.add.text(
+            10,
+            uiY + 4,
+            this.enemy.name,
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '8px',
+                color: '#ffffff'
+            }
+        );
+
         // コマンドウィンドウの背景
         const commandBg = this.add.graphics();
-        commandBg.fillStyle(0x000000, 0.8);
-        commandBg.fillRoundedRect(10, GAME_HEIGHT - 100, 150, 90, 5);
-        commandBg.lineStyle(2, 0x4ade80, 1);
-        commandBg.strokeRoundedRect(10, GAME_HEIGHT - 100, 150, 90, 5);
+        commandBg.fillStyle(0x000044, 0.9);
+        commandBg.fillRect(5, uiY + 25, 100, 60);
+        commandBg.lineStyle(2, 0x4444aa, 1);
+        commandBg.strokeRect(5, uiY + 25, 100, 60);
 
         // コマンドテキスト
         const commandLabels = ['たたかう', 'ぼうぎょ', 'にげる'];
         commandLabels.forEach((label, index) => {
             const text = this.add.text(
-                50,
-                GAME_HEIGHT - 85 + index * 25,
+                30,
+                uiY + 32 + index * 18,
                 label,
                 {
                     fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '10px',
+                    fontSize: '8px',
                     color: '#ffffff'
                 }
             );
@@ -210,96 +286,90 @@ export class BattleScene extends Phaser.Scene {
 
         // カーソル
         this.cursor = this.add.text(
-            25,
-            GAME_HEIGHT - 85,
+            15,
+            uiY + 32,
             '▶',
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '10px',
-                color: '#4ade80'
+                fontSize: '8px',
+                color: '#ffffff'
             }
         );
 
-        // メッセージウィンドウ
-        const messageBg = this.add.graphics();
-        messageBg.fillStyle(0x000000, 0.8);
-        messageBg.fillRoundedRect(170, GAME_HEIGHT - 100, GAME_WIDTH - 180, 90, 5);
-        messageBg.lineStyle(2, 0xfbbf24, 1);
-        messageBg.strokeRoundedRect(170, GAME_HEIGHT - 100, GAME_WIDTH - 180, 90, 5);
+        // ===== 右側：パーティステータス =====
+        const statusX = 115;
+        const statusWidth = GAME_WIDTH - 120;
 
-        this.messageText = this.add.text(
-            185,
-            GAME_HEIGHT - 85,
-            '',
+        const statusBg = this.add.graphics();
+        statusBg.fillStyle(0x000044, 0.9);
+        statusBg.fillRect(statusX, uiY, statusWidth, 85);
+        statusBg.lineStyle(2, 0x4444aa, 1);
+        statusBg.strokeRect(statusX, uiY, statusWidth, 85);
+
+        // パーティメンバーステータス表示（FF6風）
+        // とりくん（1人目）
+        this.add.text(
+            statusX + 10,
+            uiY + 8,
+            'とりくん',
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '9px',
-                color: '#ffffff',
-                wordWrap: { width: GAME_WIDTH - 210 },
-                lineSpacing: 5
+                fontSize: '8px',
+                color: '#ffffff'
             }
         );
 
-        // ステータスウィンドウ（拡張版）
-        const statusBg = this.add.graphics();
-        statusBg.fillStyle(0x000000, 0.85);
-        statusBg.fillRoundedRect(GAME_WIDTH - 160, 8, 152, 75, 5);
-        statusBg.lineStyle(2, 0x4ade80, 1);
-        statusBg.strokeRoundedRect(GAME_WIDTH - 160, 8, 152, 75, 5);
-
-        // プレイヤー名
-        this.add.text(
-            GAME_WIDTH - 150,
-            15,
-            'とりくん',
+        // HP表示（右揃え風）
+        this.playerHpText = this.add.text(
+            statusX + 120,
+            uiY + 8,
+            `${this.playerHp}`,
             {
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: '8px',
                 color: '#4ade80'
             }
         );
+        this.playerHpText.setOrigin(1, 0);
 
-        // プレイヤーHP テキスト
-        this.playerHpText = this.add.text(
-            GAME_WIDTH - 150,
-            28,
-            `HP: ${this.playerHp}/${this.playerMaxHp}`,
+        // HP最大値
+        this.add.text(
+            statusX + 122,
+            uiY + 8,
+            `/${this.playerMaxHp}`,
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '7px',
-                color: '#ffffff'
+                fontSize: '8px',
+                color: '#888888'
             }
         );
 
-        // プレイヤーHPバー背景
+        // HPバー背景
         this.playerHpBarBg = this.add.graphics();
         this.playerHpBarBg.fillStyle(0x333333, 1);
-        this.playerHpBarBg.fillRect(GAME_WIDTH - 150, 40, 130, 8);
+        this.playerHpBarBg.fillRect(statusX + 170, uiY + 6, 80, 12);
 
-        // プレイヤーHPバー
+        // HPバー
         this.playerHpBar = this.add.graphics();
-        this.drawHpBar(this.playerHpBar, GAME_WIDTH - 150, 40, 130, 8, this.playerHp, this.playerMaxHp);
+        this.drawHpBar(this.playerHpBar, statusX + 170, uiY + 6, 80, 12, this.playerHp, this.playerMaxHp);
 
-        // 敵HP テキスト
-        this.enemyHpText = this.add.text(
-            GAME_WIDTH - 150,
-            55,
-            `${this.enemy.name}: ${this.enemy.hp}/${this.enemy.maxHp}`,
+        // 敵HPバー（非表示だが内部で使用）
+        this.enemyHpBarBg = this.add.graphics();
+        this.enemyHpBar = this.add.graphics();
+
+        // メッセージテキスト（ステータスウィンドウ下部）
+        this.messageText = this.add.text(
+            statusX + 10,
+            uiY + 30,
+            '',
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '7px',
-                color: '#e94560'
+                fontSize: '8px',
+                color: '#ffffff',
+                wordWrap: { width: statusWidth - 20 },
+                lineSpacing: 4
             }
         );
-
-        // 敵HPバー背景
-        this.enemyHpBarBg = this.add.graphics();
-        this.enemyHpBarBg.fillStyle(0x333333, 1);
-        this.enemyHpBarBg.fillRect(GAME_WIDTH - 150, 67, 130, 8);
-
-        // 敵HPバー
-        this.enemyHpBar = this.add.graphics();
-        this.drawHpBar(this.enemyHpBar, GAME_WIDTH - 150, 67, 130, 8, this.enemy.hp, this.enemy.maxHp, true);
 
         // 初期状態ではコマンドを非表示
         this.setCommandVisible(false);
@@ -381,7 +451,9 @@ export class BattleScene extends Phaser.Scene {
             this.selectedCommand = 0;
         }
 
-        this.cursor.setY(GAME_HEIGHT - 85 + this.selectedCommand * 25);
+        // FF6風UIのカーソル位置
+        const uiY = GAME_HEIGHT - 90;
+        this.cursor.setY(uiY + 32 + this.selectedCommand * 18);
     }
 
     /**
@@ -415,7 +487,9 @@ export class BattleScene extends Phaser.Scene {
         this.showMessage('コマンド？');
         this.setCommandVisible(true);
         this.selectedCommand = 0;
-        this.cursor.setY(GAME_HEIGHT - 85);
+        // FF6風UIのカーソル位置
+        const uiY = GAME_HEIGHT - 90;
+        this.cursor.setY(uiY + 32);
     }
 
     /**
@@ -598,13 +672,15 @@ export class BattleScene extends Phaser.Scene {
      * HP表示を更新
      */
     private updateHpDisplay(): void {
-        // テキスト更新
-        this.playerHpText.setText(`HP: ${Math.max(0, this.playerHp)}/${this.playerMaxHp}`);
-        this.enemyHpText.setText(`${this.enemy.name}: ${Math.max(0, this.enemy.hp)}/${this.enemy.maxHp}`);
+        // FF6風UIの座標
+        const uiY = GAME_HEIGHT - 90;
+        const statusX = 115;
+
+        // テキスト更新（FF6風：HP数値のみ）
+        this.playerHpText.setText(`${Math.max(0, this.playerHp)}`);
 
         // HPバー更新
-        this.drawHpBar(this.playerHpBar, GAME_WIDTH - 150, 40, 130, 8, this.playerHp, this.playerMaxHp);
-        this.drawHpBar(this.enemyHpBar, GAME_WIDTH - 150, 67, 130, 8, this.enemy.hp, this.enemy.maxHp, true);
+        this.drawHpBar(this.playerHpBar, statusX + 170, uiY + 6, 80, 12, this.playerHp, this.playerMaxHp);
     }
 
     /**
