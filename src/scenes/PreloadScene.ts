@@ -95,10 +95,10 @@ export class PreloadScene extends Phaser.Scene {
         // プレイヤースプライト用のプレースホルダー（16x16）
         this.createPlayerTexture();
 
-        // 敵スプライト用のプレースホルダー
-        this.createPlaceholderTexture('enemy-slime', 32, 32, 0xe94560);
-        this.createPlaceholderTexture('enemy-bat', 24, 24, 0x8b5cf6);
-        this.createPlaceholderTexture('enemy-goblin', 32, 32, 0xf59e0b);
+        // 敵スプライトの生成（ピクセルアート）
+        this.createSlimeTexture();
+        this.createBatTexture();
+        this.createGoblinTexture();
 
         // バトル背景用のプレースホルダー
         this.createPlaceholderTexture('battle-bg', 480, 320, 0x1e3a5f);
@@ -500,11 +500,333 @@ export class PreloadScene extends Phaser.Scene {
         graphics.destroy();
     }
 
+    /**
+     * スライムスプライトを生成 (32x32, 2フレーム)
+     * ドロップ型のかわいいスライム
+     */
+    private createSlimeTexture(): void {
+        const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 32;
+        const frameHeight = 32;
+        const frames = 2;
+
+        // 色定義
+        const colors = {
+            body: 0xe94560,       // 本体（ピンク/赤）
+            bodyLight: 0xff6b8a,  // ハイライト
+            bodyDark: 0xbe123c,   // シャドウ
+            eye: 0x1f2937,        // 目
+            eyeWhite: 0xffffff,   // 目の白
+            highlight: 0xffffff,  // てかり
+        };
+
+        for (let frame = 0; frame < frames; frame++) {
+            const x = frame * frameWidth;
+            const y = 0;
+
+            // アニメーションオフセット（伸び縮み）
+            const squash = frame === 0 ? 0 : 2;
+            const stretch = frame === 0 ? 0 : -2;
+
+            // 影
+            graphics.fillStyle(0x000000, 0.3);
+            graphics.fillEllipse(x + 16, y + 30, 20, 6);
+
+            // 本体（ドロップ型）
+            graphics.fillStyle(colors.bodyDark, 1);
+            graphics.fillEllipse(x + 16, y + 20 - stretch, 14 + squash, 12 + stretch);
+
+            graphics.fillStyle(colors.body, 1);
+            graphics.fillEllipse(x + 16, y + 18 - stretch, 12 + squash, 10 + stretch);
+
+            // 頭のとんがり部分
+            graphics.fillStyle(colors.body, 1);
+            graphics.fillTriangle(
+                x + 16, y + 4 - stretch,
+                x + 10, y + 14 - stretch,
+                x + 22, y + 14 - stretch
+            );
+
+            // ハイライト
+            graphics.fillStyle(colors.bodyLight, 1);
+            graphics.fillEllipse(x + 12, y + 14 - stretch, 4, 6);
+
+            // てかり
+            graphics.fillStyle(colors.highlight, 0.8);
+            graphics.fillCircle(x + 10, y + 12 - stretch, 2);
+
+            // 目（2つ）
+            graphics.fillStyle(colors.eyeWhite, 1);
+            graphics.fillCircle(x + 12, y + 18 - stretch, 4);
+            graphics.fillCircle(x + 20, y + 18 - stretch, 4);
+
+            graphics.fillStyle(colors.eye, 1);
+            graphics.fillCircle(x + 13, y + 19 - stretch, 2);
+            graphics.fillCircle(x + 21, y + 19 - stretch, 2);
+
+            // ハイライト（目）
+            graphics.fillStyle(colors.highlight, 1);
+            graphics.fillCircle(x + 12, y + 17 - stretch, 1);
+            graphics.fillCircle(x + 20, y + 17 - stretch, 1);
+
+            // 口（にっこり）
+            graphics.lineStyle(1, colors.eye, 1);
+            graphics.beginPath();
+            graphics.arc(x + 16, y + 22 - stretch, 3, 0.2, Math.PI - 0.2);
+            graphics.strokePath();
+        }
+
+        graphics.generateTexture('enemy-slime', frameWidth * frames, frameHeight);
+        graphics.destroy();
+
+        // スプライトシートとしてフレームを追加
+        this.textures.get('enemy-slime').add(0, 0, 0, 0, frameWidth, frameHeight);
+        this.textures.get('enemy-slime').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
+    }
+
+    /**
+     * コウモリスプライトを生成 (32x32, 2フレーム)
+     * 翼を広げたコウモリ
+     */
+    private createBatTexture(): void {
+        const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 32;
+        const frameHeight = 32;
+        const frames = 2;
+
+        // 色定義
+        const colors = {
+            body: 0x8b5cf6,       // 本体（紫）
+            bodyLight: 0xa78bfa,  // ハイライト
+            bodyDark: 0x6d28d9,   // シャドウ
+            wing: 0x7c3aed,       // 翼
+            wingDark: 0x5b21b6,   // 翼（暗い）
+            eye: 0xff0000,        // 目（赤）
+            eyeGlow: 0xff6666,    // 目の光
+            ear: 0x6d28d9,        // 耳
+        };
+
+        for (let frame = 0; frame < frames; frame++) {
+            const x = frame * frameWidth;
+            const y = 0;
+
+            // 翼の角度（羽ばたき）
+            const wingUp = frame === 0;
+            const wingY = wingUp ? -3 : 3;
+
+            // 左翼
+            graphics.fillStyle(colors.wingDark, 1);
+            graphics.fillTriangle(
+                x + 8, y + 16,
+                x + 1, y + 10 + wingY,
+                x + 1, y + 22 + wingY
+            );
+            graphics.fillStyle(colors.wing, 1);
+            graphics.fillTriangle(
+                x + 10, y + 16,
+                x + 2, y + 11 + wingY,
+                x + 2, y + 21 + wingY
+            );
+            // 翼の骨
+            graphics.lineStyle(1, colors.bodyDark, 1);
+            graphics.lineBetween(x + 8, y + 14, x + 2, y + 10 + wingY);
+            graphics.lineBetween(x + 8, y + 16, x + 2, y + 16 + wingY);
+            graphics.lineBetween(x + 8, y + 18, x + 2, y + 22 + wingY);
+
+            // 右翼
+            graphics.fillStyle(colors.wingDark, 1);
+            graphics.fillTriangle(
+                x + 24, y + 16,
+                x + 31, y + 10 + wingY,
+                x + 31, y + 22 + wingY
+            );
+            graphics.fillStyle(colors.wing, 1);
+            graphics.fillTriangle(
+                x + 22, y + 16,
+                x + 30, y + 11 + wingY,
+                x + 30, y + 21 + wingY
+            );
+            // 翼の骨
+            graphics.lineStyle(1, colors.bodyDark, 1);
+            graphics.lineBetween(x + 24, y + 14, x + 30, y + 10 + wingY);
+            graphics.lineBetween(x + 24, y + 16, x + 30, y + 16 + wingY);
+            graphics.lineBetween(x + 24, y + 18, x + 30, y + 22 + wingY);
+
+            // 本体
+            graphics.fillStyle(colors.bodyDark, 1);
+            graphics.fillEllipse(x + 16, y + 18, 10, 8);
+            graphics.fillStyle(colors.body, 1);
+            graphics.fillEllipse(x + 16, y + 17, 9, 7);
+
+            // 頭
+            graphics.fillStyle(colors.body, 1);
+            graphics.fillCircle(x + 16, y + 12, 6);
+
+            // ハイライト
+            graphics.fillStyle(colors.bodyLight, 1);
+            graphics.fillCircle(x + 14, y + 10, 2);
+
+            // 耳（2つ、三角形）
+            graphics.fillStyle(colors.ear, 1);
+            graphics.fillTriangle(x + 10, y + 8, x + 12, y + 3, x + 14, y + 8);
+            graphics.fillTriangle(x + 18, y + 8, x + 20, y + 3, x + 22, y + 8);
+
+            // 目（赤く光る）
+            graphics.fillStyle(colors.eyeGlow, 1);
+            graphics.fillCircle(x + 13, y + 12, 2);
+            graphics.fillCircle(x + 19, y + 12, 2);
+            graphics.fillStyle(colors.eye, 1);
+            graphics.fillCircle(x + 13, y + 12, 1);
+            graphics.fillCircle(x + 19, y + 12, 1);
+
+            // 牙
+            graphics.fillStyle(0xffffff, 1);
+            graphics.fillTriangle(x + 14, y + 16, x + 15, y + 19, x + 16, y + 16);
+            graphics.fillTriangle(x + 16, y + 16, x + 17, y + 19, x + 18, y + 16);
+
+            // 足（小さい）
+            graphics.fillStyle(colors.bodyDark, 1);
+            graphics.fillRect(x + 13, y + 24, 2, 4);
+            graphics.fillRect(x + 17, y + 24, 2, 4);
+        }
+
+        graphics.generateTexture('enemy-bat', frameWidth * frames, frameHeight);
+        graphics.destroy();
+
+        // スプライトシートとしてフレームを追加
+        this.textures.get('enemy-bat').add(0, 0, 0, 0, frameWidth, frameHeight);
+        this.textures.get('enemy-bat').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
+    }
+
+    /**
+     * ゴブリンスプライトを生成 (32x32, 2フレーム)
+     * 小鬼風のモンスター
+     */
+    private createGoblinTexture(): void {
+        const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 32;
+        const frameHeight = 32;
+        const frames = 2;
+
+        // 色定義
+        const colors = {
+            skin: 0x22c55e,       // 肌（緑）
+            skinLight: 0x4ade80,  // ハイライト
+            skinDark: 0x166534,   // シャドウ
+            eye: 0xfbbf24,        // 目（黄色）
+            eyePupil: 0x1f2937,   // 瞳
+            ear: 0x15803d,        // 耳
+            cloth: 0x78350f,      // 服（茶色）
+            clothDark: 0x451a03,  // 服（暗い）
+            weapon: 0x6b7280,     // 武器（灰色）
+            weaponLight: 0x9ca3af, // 武器（明るい）
+        };
+
+        for (let frame = 0; frame < frames; frame++) {
+            const x = frame * frameWidth;
+            const y = 0;
+
+            // アニメーションオフセット
+            const bounce = frame === 0 ? 0 : 1;
+            const armSwing = frame === 0 ? 0 : 2;
+
+            // 影
+            graphics.fillStyle(0x000000, 0.3);
+            graphics.fillEllipse(x + 16, y + 30, 12, 4);
+
+            // 足
+            graphics.fillStyle(colors.skinDark, 1);
+            graphics.fillRect(x + 10, y + 24 + bounce, 4, 6);
+            graphics.fillRect(x + 18, y + 24 + bounce, 4, 6);
+            graphics.fillStyle(colors.skin, 1);
+            graphics.fillRect(x + 10, y + 24 + bounce, 4, 5);
+            graphics.fillRect(x + 18, y + 24 + bounce, 4, 5);
+
+            // 体（ぼろ布）
+            graphics.fillStyle(colors.clothDark, 1);
+            graphics.fillRect(x + 8, y + 14 + bounce, 16, 12);
+            graphics.fillStyle(colors.cloth, 1);
+            graphics.fillRect(x + 9, y + 14 + bounce, 14, 10);
+            // ぼろぼろの端
+            graphics.fillTriangle(x + 8, y + 24 + bounce, x + 10, y + 24 + bounce, x + 9, y + 27 + bounce);
+            graphics.fillTriangle(x + 14, y + 24 + bounce, x + 16, y + 24 + bounce, x + 15, y + 26 + bounce);
+            graphics.fillTriangle(x + 22, y + 24 + bounce, x + 24, y + 24 + bounce, x + 23, y + 27 + bounce);
+
+            // 腕
+            graphics.fillStyle(colors.skinDark, 1);
+            graphics.fillRect(x + 4, y + 16 + bounce - armSwing, 5, 8);
+            graphics.fillRect(x + 23, y + 16 + bounce + armSwing, 5, 8);
+            graphics.fillStyle(colors.skin, 1);
+            graphics.fillRect(x + 5, y + 16 + bounce - armSwing, 4, 7);
+            graphics.fillRect(x + 23, y + 16 + bounce + armSwing, 4, 7);
+
+            // 武器（こん棒）
+            graphics.fillStyle(colors.weapon, 1);
+            graphics.fillRect(x + 26, y + 12 + bounce + armSwing, 4, 14);
+            graphics.fillStyle(colors.weaponLight, 1);
+            graphics.fillRect(x + 27, y + 12 + bounce + armSwing, 2, 3);
+            // こん棒の先端
+            graphics.fillStyle(colors.weapon, 1);
+            graphics.fillCircle(x + 28, y + 10 + bounce + armSwing, 4);
+            graphics.fillStyle(colors.weaponLight, 1);
+            graphics.fillCircle(x + 27, y + 9 + bounce + armSwing, 1);
+
+            // 頭
+            graphics.fillStyle(colors.skinDark, 1);
+            graphics.fillCircle(x + 16, y + 10 + bounce, 8);
+            graphics.fillStyle(colors.skin, 1);
+            graphics.fillCircle(x + 16, y + 9 + bounce, 7);
+            graphics.fillStyle(colors.skinLight, 1);
+            graphics.fillCircle(x + 14, y + 7 + bounce, 2);
+
+            // 耳（大きく尖った）
+            graphics.fillStyle(colors.ear, 1);
+            graphics.fillTriangle(x + 6, y + 10 + bounce, x + 10, y + 4 + bounce, x + 12, y + 10 + bounce);
+            graphics.fillTriangle(x + 20, y + 10 + bounce, x + 22, y + 4 + bounce, x + 26, y + 10 + bounce);
+            graphics.fillStyle(colors.skinLight, 1);
+            graphics.fillTriangle(x + 8, y + 10 + bounce, x + 10, y + 6 + bounce, x + 11, y + 10 + bounce);
+            graphics.fillTriangle(x + 21, y + 10 + bounce, x + 22, y + 6 + bounce, x + 24, y + 10 + bounce);
+
+            // 目（大きく黄色い）
+            graphics.fillStyle(colors.eye, 1);
+            graphics.fillCircle(x + 13, y + 9 + bounce, 3);
+            graphics.fillCircle(x + 19, y + 9 + bounce, 3);
+            graphics.fillStyle(colors.eyePupil, 1);
+            graphics.fillCircle(x + 14, y + 10 + bounce, 1);
+            graphics.fillCircle(x + 20, y + 10 + bounce, 1);
+
+            // 鼻（丸い）
+            graphics.fillStyle(colors.skinDark, 1);
+            graphics.fillCircle(x + 16, y + 12 + bounce, 2);
+
+            // 口（にやり）
+            graphics.lineStyle(1, colors.skinDark, 1);
+            graphics.beginPath();
+            graphics.arc(x + 16, y + 14 + bounce, 3, 0.3, Math.PI - 0.3);
+            graphics.strokePath();
+
+            // 牙
+            graphics.fillStyle(0xffffff, 1);
+            graphics.fillTriangle(x + 13, y + 15 + bounce, x + 14, y + 18 + bounce, x + 15, y + 15 + bounce);
+            graphics.fillTriangle(x + 17, y + 15 + bounce, x + 18, y + 18 + bounce, x + 19, y + 15 + bounce);
+        }
+
+        graphics.generateTexture('enemy-goblin', frameWidth * frames, frameHeight);
+        graphics.destroy();
+
+        // スプライトシートとしてフレームを追加
+        this.textures.get('enemy-goblin').add(0, 0, 0, 0, frameWidth, frameHeight);
+        this.textures.get('enemy-goblin').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
+    }
+
     create(): void {
         console.log('PreloadScene: Assets loaded');
 
         // プレイヤーアニメーションを定義
         this.createPlayerAnimations();
+
+        // 敵アニメーションを定義
+        this.createEnemyAnimations();
 
         // タイトルシーンへ遷移
         this.scene.start('TitleScene');
@@ -585,5 +907,45 @@ export class PreloadScene extends Phaser.Scene {
         });
 
         console.log('Player animations created');
+    }
+
+    /**
+     * 敵アニメーションを定義
+     */
+    private createEnemyAnimations(): void {
+        // スライムのアイドルアニメーション（伸び縮み）
+        this.anims.create({
+            key: 'enemy-slime-idle',
+            frames: this.anims.generateFrameNumbers('enemy-slime', {
+                start: 0,
+                end: 1
+            }),
+            frameRate: 2,
+            repeat: -1
+        });
+
+        // コウモリのアイドルアニメーション（羽ばたき）
+        this.anims.create({
+            key: 'enemy-bat-idle',
+            frames: this.anims.generateFrameNumbers('enemy-bat', {
+                start: 0,
+                end: 1
+            }),
+            frameRate: 6,
+            repeat: -1
+        });
+
+        // ゴブリンのアイドルアニメーション（足踏み）
+        this.anims.create({
+            key: 'enemy-goblin-idle',
+            frames: this.anims.generateFrameNumbers('enemy-goblin', {
+                start: 0,
+                end: 1
+            }),
+            frameRate: 3,
+            repeat: -1
+        });
+
+        console.log('Enemy animations created');
     }
 }

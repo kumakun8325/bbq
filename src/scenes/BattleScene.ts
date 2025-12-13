@@ -22,6 +22,7 @@ interface EnemyData {
     color: number;
     width: number;
     height: number;
+    spriteKey: string;  // スプライトのテクスチャキー
 }
 
 /** 敵データベース */
@@ -34,7 +35,8 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         defense: 2,
         color: 0xe94560,
         width: 32,
-        height: 32
+        height: 32,
+        spriteKey: 'enemy-slime'
     },
     bat: {
         name: 'コウモリ',
@@ -43,8 +45,9 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         attack: 8,
         defense: 1,
         color: 0x8b5cf6,
-        width: 24,
-        height: 24
+        width: 32,
+        height: 32,
+        spriteKey: 'enemy-bat'
     },
     goblin: {
         name: 'ゴブリン',
@@ -54,13 +57,15 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         defense: 3,
         color: 0xf59e0b,
         width: 32,
-        height: 32
+        height: 32,
+        spriteKey: 'enemy-goblin'
     }
 };
 
 export class BattleScene extends Phaser.Scene {
     private enemy!: EnemyData;
-    private enemySprite!: Phaser.GameObjects.Rectangle;
+    private enemyType: string = 'slime';  // 現在の敵タイプ
+    private enemySprite!: Phaser.GameObjects.Sprite;
     private returnScene: string = 'MapScene';
     private playerPosition: { x: number; y: number } = { x: 0, y: 0 };
 
@@ -94,8 +99,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     init(data: { enemyType?: string; returnScene?: string; playerPosition?: { x: number; y: number } }): void {
-        const enemyType = data.enemyType || 'slime';
-        this.enemy = { ...ENEMY_DATABASE[enemyType] };
+        this.enemyType = data.enemyType || 'slime';
+        this.enemy = { ...ENEMY_DATABASE[this.enemyType] };
         this.returnScene = data.returnScene || 'MapScene';
         this.playerPosition = data.playerPosition || { x: 0, y: 0 };
 
@@ -148,19 +153,28 @@ export class BattleScene extends Phaser.Scene {
      * 敵スプライトを作成
      */
     private createEnemySprite(): void {
-        this.enemySprite = this.add.rectangle(
+        // スプライトを作成
+        this.enemySprite = this.add.sprite(
             GAME_WIDTH / 2,
             GAME_HEIGHT * 0.35,
-            this.enemy.width,
-            this.enemy.height,
-            this.enemy.color
+            this.enemy.spriteKey
         );
 
-        // 揺れアニメーション
+        // スプライトのスケール（必要に応じて調整）
+        this.enemySprite.setScale(2);
+
+        // アイドルアニメーションを再生
+        const animKey = `${this.enemy.spriteKey}-idle`;
+        if (this.anims.exists(animKey)) {
+            this.enemySprite.play(animKey);
+        }
+
+        // 軽い浮遊アニメーション（コウモリはより大きく）
+        const floatAmount = this.enemyType === 'bat' ? 8 : 3;
         this.tweens.add({
             targets: this.enemySprite,
-            y: this.enemySprite.y - 5,
-            duration: 1000,
+            y: this.enemySprite.y - floatAmount,
+            duration: this.enemyType === 'bat' ? 600 : 1200,
             yoyo: true,
             repeat: -1,
             ease: 'Sine.easeInOut'
