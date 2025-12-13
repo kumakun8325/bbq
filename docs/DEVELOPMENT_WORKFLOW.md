@@ -14,6 +14,39 @@
 
 ---
 
+## 0. 新規プロジェクト開始
+
+新しいプロジェクトを開始する場合は、SDDテンプレートリポジトリからテンプレートを取得してください。
+
+### テンプレート取得方法
+
+```bash
+# degit を使う場合（推奨）
+npx degit kumakun8325/sdd-templates my-new-project
+cd my-new-project
+
+# または git clone
+git clone https://github.com/kumakun8325/sdd-templates.git my-new-project
+cd my-new-project
+rm -rf .git  # テンプレートのgit履歴を削除
+git init     # 新しいリポジトリとして初期化
+```
+
+### プレースホルダー置換
+
+テンプレート内のプレースホルダーを実際の値に置き換えてください：
+
+| プレースホルダー | 説明 |
+|------------------|------|
+| `{{PROJECT_NAME}}` | プロジェクト名 |
+| `{{PROJECT_NAME_EN}}` | プロジェクト名（英語） |
+| `{{DESCRIPTION}}` | 簡単な説明 |
+| `{{DATE}}` | 作成日 |
+
+詳細は [sdd-templates リポジトリ](https://github.com/kumakun8325/sdd-templates) を参照してください。
+
+---
+
 ## 1. 開発環境セットアップ
 
 ### 1.1 必要なツール
