@@ -226,7 +226,8 @@ export class PreloadScene extends Phaser.Scene {
 
     /**
      * プレイヤースプライトシートを生成（4方向 × 3フレーム）
-     * レイアウト: 3列 x 4行 = 48x64ピクセル
+     * レイアウト: 3列 x 4行 = 48x96ピクセル
+     * フレームサイズ: 16x24 (FF6風)
      * 行0: 下向き (frame 0-2)
      * 行1: 左向き (frame 3-5)
      * 行2: 右向き (frame 6-8)
@@ -235,19 +236,30 @@ export class PreloadScene extends Phaser.Scene {
     private createPlayerTexture(): void {
         const graphics = this.make.graphics({ x: 0, y: 0 });
         const frameWidth = 16;
-        const frameHeight = 16;
+        const frameHeight = 24;  // FF6風に拡大
         const framesPerDirection = 3;
         const directions = 4;
 
-        // 色定義
+        // 色定義（より豊かな色彩）
         const colors = {
+            // 体の色
             body: 0x4ade80,       // 体（緑）
-            bodyLight: 0x86efac,  // 明るい緑
-            bodyDark: 0x166534,   // 暗い緑
+            bodyLight: 0x86efac,  // 明るい緑（ハイライト）
+            bodyDark: 0x166534,   // 暗い緑（影）
+            bodyMid: 0x22c55e,    // 中間の緑
+            // 顔のパーツ
             beak: 0xfbbf24,       // くちばし（オレンジ）
+            beakDark: 0xd97706,   // くちばし（暗い）
             eye: 0x1f2937,        // 目（黒）
+            eyeWhite: 0xffffff,   // 目の白
+            // 足と羽
             feet: 0xf97316,       // 足（オレンジ）
+            feetDark: 0xea580c,   // 足（暗い）
             wing: 0x22c55e,       // 羽（緑）
+            wingDark: 0x15803d,   // 羽（暗い）
+            // アクセサリ
+            scarf: 0xe94560,      // スカーフ（赤）
+            scarfDark: 0xbe123c,  // スカーフ（暗い）
         };
 
         // 各方向と各フレームを描画
@@ -255,7 +267,7 @@ export class PreloadScene extends Phaser.Scene {
             for (let frame = 0; frame < framesPerDirection; frame++) {
                 const x = frame * frameWidth;
                 const y = dir * frameHeight;
-                this.drawBirdFrame(graphics, x, y, dir, frame, colors);
+                this.drawBirdFrame16x24(graphics, x, y, dir, frame, colors);
             }
         }
 
@@ -264,7 +276,7 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     /**
-     * 鳥キャラクターの1フレームを描画
+     * FF6風の鳥キャラクター（16x24）の1フレームを描画
      * @param graphics Graphicsオブジェクト
      * @param x フレームのX座標
      * @param y フレームのY座標
@@ -272,7 +284,7 @@ export class PreloadScene extends Phaser.Scene {
      * @param frame フレーム番号 (0-2: 歩行サイクル)
      * @param colors 色定義
      */
-    private drawBirdFrame(
+    private drawBirdFrame16x24(
         graphics: Phaser.GameObjects.Graphics,
         x: number,
         y: number,
@@ -281,103 +293,190 @@ export class PreloadScene extends Phaser.Scene {
         colors: { [key: string]: number }
     ): void {
         // 歩行アニメーションのオフセット
-        const walkOffset = frame === 1 ? 1 : 0; // 中間フレームで少し上に
-        const feetOffset = frame === 0 ? 0 : (frame === 1 ? 1 : 2); // 足の動き
+        const bounceOffset = frame === 1 ? -1 : 0; // 中間フレームで少し上に
 
-        // 体のベース位置
-        const bodyY = y + 4 - walkOffset;
+        // 足の動きパターン
+        const isLeftFootForward = frame === 0;
+        const isRightFootForward = frame === 2;
+        const isBothFeet = frame === 1;
 
-        // 体（丸い鳥のボディ）
+        // === 足を先に描画（体の下に隠れる部分） ===
+        this.drawBirdFeet(graphics, x, y, direction, frame, colors);
+
+        // === 体（メインボディ） ===
+        const bodyY = y + 6 + bounceOffset;
+
+        // 体の影
+        graphics.fillStyle(colors.bodyDark, 1);
+        graphics.fillRoundedRect(x + 3, bodyY + 2, 10, 10, 3);
+
+        // 体のメイン
         graphics.fillStyle(colors.body, 1);
-        graphics.fillRoundedRect(x + 3, bodyY + 2, 10, 9, 3);
+        graphics.fillRoundedRect(x + 3, bodyY + 1, 10, 9, 3);
 
         // 体のハイライト
         graphics.fillStyle(colors.bodyLight, 1);
-        graphics.fillRect(x + 5, bodyY + 3, 4, 3);
+        graphics.fillRect(x + 5, bodyY + 2, 5, 4);
 
-        // 方向によって顔のパーツを変える
+        // === スカーフ（首元のアクセサリー） ===
+        graphics.fillStyle(colors.scarf, 1);
+        if (direction === 0) { // 下向き
+            graphics.fillRect(x + 4, bodyY + 8, 8, 2);
+            graphics.fillStyle(colors.scarfDark, 1);
+            graphics.fillRect(x + 6, bodyY + 9, 4, 3); // たなびく部分
+        } else if (direction === 1) { // 左向き
+            graphics.fillRect(x + 5, bodyY + 7, 6, 2);
+            graphics.fillStyle(colors.scarfDark, 1);
+            graphics.fillRect(x + 10, bodyY + 8, 3, 2); // 右側にたなびく
+        } else if (direction === 2) { // 右向き
+            graphics.fillRect(x + 5, bodyY + 7, 6, 2);
+            graphics.fillStyle(colors.scarfDark, 1);
+            graphics.fillRect(x + 3, bodyY + 8, 3, 2); // 左側にたなびく
+        } else { // 上向き
+            graphics.fillRect(x + 4, bodyY + 8, 8, 2);
+        }
+
+        // === 頭 ===
+        const headY = y + 2 + bounceOffset;
+
+        // 頭のベース
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 4, headY, 8, 7, 2);
+
+        // 頭のハイライト
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 5, headY + 1, 4, 3);
+
+        // === 顔のパーツ（方向別） ===
         switch (direction) {
             case 0: // 下向き
-                // 目（2つ）
+                // 目（2つ）- 白目付き
+                graphics.fillStyle(colors.eyeWhite, 1);
+                graphics.fillRect(x + 5, headY + 2, 3, 3);
+                graphics.fillRect(x + 9, headY + 2, 3, 3);
                 graphics.fillStyle(colors.eye, 1);
-                graphics.fillRect(x + 5, bodyY + 5, 2, 2);
-                graphics.fillRect(x + 9, bodyY + 5, 2, 2);
+                graphics.fillRect(x + 6, headY + 3, 2, 2);
+                graphics.fillRect(x + 10, headY + 3, 2, 2);
                 // くちばし
                 graphics.fillStyle(colors.beak, 1);
-                graphics.fillRect(x + 7, bodyY + 8, 2, 2);
+                graphics.fillRect(x + 7, headY + 5, 3, 2);
+                graphics.fillStyle(colors.beakDark, 1);
+                graphics.fillRect(x + 7, headY + 6, 3, 1);
                 break;
 
             case 1: // 左向き
                 // 目（1つ、左側）
+                graphics.fillStyle(colors.eyeWhite, 1);
+                graphics.fillRect(x + 4, headY + 2, 3, 3);
                 graphics.fillStyle(colors.eye, 1);
-                graphics.fillRect(x + 4, bodyY + 5, 2, 2);
-                // くちばし
+                graphics.fillRect(x + 4, headY + 3, 2, 2);
+                // くちばし（横長）
                 graphics.fillStyle(colors.beak, 1);
-                graphics.fillRect(x + 2, bodyY + 6, 3, 2);
-                // 羽
+                graphics.fillRect(x + 1, headY + 4, 4, 2);
+                graphics.fillStyle(colors.beakDark, 1);
+                graphics.fillRect(x + 1, headY + 5, 4, 1);
+                // 羽（体の横）
                 graphics.fillStyle(colors.wing, 1);
-                graphics.fillRect(x + 10, bodyY + 4, 3, 4);
+                graphics.fillRect(x + 11, bodyY + 2, 3, 5);
+                graphics.fillStyle(colors.wingDark, 1);
+                graphics.fillRect(x + 12, bodyY + 5, 2, 2);
                 break;
 
             case 2: // 右向き
                 // 目（1つ、右側）
+                graphics.fillStyle(colors.eyeWhite, 1);
+                graphics.fillRect(x + 10, headY + 2, 3, 3);
                 graphics.fillStyle(colors.eye, 1);
-                graphics.fillRect(x + 10, bodyY + 5, 2, 2);
-                // くちばし
+                graphics.fillRect(x + 11, headY + 3, 2, 2);
+                // くちばし（横長）
                 graphics.fillStyle(colors.beak, 1);
-                graphics.fillRect(x + 11, bodyY + 6, 3, 2);
-                // 羽
+                graphics.fillRect(x + 12, headY + 4, 4, 2);
+                graphics.fillStyle(colors.beakDark, 1);
+                graphics.fillRect(x + 12, headY + 5, 4, 1);
+                // 羽（体の横）
                 graphics.fillStyle(colors.wing, 1);
-                graphics.fillRect(x + 3, bodyY + 4, 3, 4);
+                graphics.fillRect(x + 2, bodyY + 2, 3, 5);
+                graphics.fillStyle(colors.wingDark, 1);
+                graphics.fillRect(x + 2, bodyY + 5, 2, 2);
                 break;
 
             case 3: // 上向き
-                // 後頭部のみ（顔は見えない）
-                graphics.fillStyle(colors.bodyDark, 1);
-                graphics.fillRect(x + 5, bodyY + 3, 6, 4);
+                // 後頭部のハイライト
+                graphics.fillStyle(colors.bodyMid, 1);
+                graphics.fillRect(x + 5, headY + 1, 6, 4);
+                // とさか
+                graphics.fillStyle(colors.scarf, 1);
+                graphics.fillRect(x + 7, headY - 1, 2, 2);
                 // しっぽ
                 graphics.fillStyle(colors.wing, 1);
-                graphics.fillRect(x + 6, bodyY + 9, 4, 2);
+                graphics.fillRect(x + 6, bodyY + 8, 4, 3);
+                graphics.fillStyle(colors.wingDark, 1);
+                graphics.fillRect(x + 7, bodyY + 10, 2, 2);
                 break;
         }
+    }
 
-        // 足（歩行アニメーション）
-        graphics.fillStyle(colors.feet, 1);
-        if (direction === 1) { // 左向き
-            // 足を交互に
-            if (feetOffset === 0) {
-                graphics.fillRect(x + 5, y + 12, 2, 3);
-                graphics.fillRect(x + 9, y + 12, 2, 3);
-            } else if (feetOffset === 1) {
-                graphics.fillRect(x + 4, y + 12, 2, 3);
-                graphics.fillRect(x + 10, y + 12, 2, 3);
-            } else {
-                graphics.fillRect(x + 6, y + 12, 2, 3);
-                graphics.fillRect(x + 8, y + 12, 2, 3);
+    /**
+     * 鳥の足を描画
+     */
+    private drawBirdFeet(
+        graphics: Phaser.GameObjects.Graphics,
+        x: number,
+        y: number,
+        direction: number,
+        frame: number,
+        colors: { [key: string]: number }
+    ): void {
+        const feetY = y + 18; // 足のベース位置
+
+        // 足のアニメーションオフセット
+        let leftFootX = x + 4;
+        let rightFootX = x + 9;
+        let leftFootY = feetY;
+        let rightFootY = feetY;
+
+        // 歩行フレームによる足の位置調整
+        if (direction === 0 || direction === 3) { // 上下向き
+            if (frame === 0) {
+                leftFootY = feetY - 1;
+                rightFootY = feetY + 1;
+            } else if (frame === 2) {
+                leftFootY = feetY + 1;
+                rightFootY = feetY - 1;
+            }
+        } else if (direction === 1) { // 左向き
+            if (frame === 0) {
+                leftFootX = x + 3;
+                rightFootX = x + 8;
+            } else if (frame === 2) {
+                leftFootX = x + 5;
+                rightFootX = x + 10;
             }
         } else if (direction === 2) { // 右向き
-            if (feetOffset === 0) {
-                graphics.fillRect(x + 5, y + 12, 2, 3);
-                graphics.fillRect(x + 9, y + 12, 2, 3);
-            } else if (feetOffset === 1) {
-                graphics.fillRect(x + 6, y + 12, 2, 3);
-                graphics.fillRect(x + 10, y + 12, 2, 3);
-            } else {
-                graphics.fillRect(x + 4, y + 12, 2, 3);
-                graphics.fillRect(x + 8, y + 12, 2, 3);
-            }
-        } else { // 上下向き
-            if (feetOffset === 0) {
-                graphics.fillRect(x + 5, y + 12, 2, 3);
-                graphics.fillRect(x + 9, y + 12, 2, 3);
-            } else if (feetOffset === 1) {
-                graphics.fillRect(x + 4, y + 13, 2, 2);
-                graphics.fillRect(x + 10, y + 13, 2, 2);
-            } else {
-                graphics.fillRect(x + 6, y + 13, 2, 2);
-                graphics.fillRect(x + 8, y + 13, 2, 2);
+            if (frame === 0) {
+                leftFootX = x + 5;
+                rightFootX = x + 10;
+            } else if (frame === 2) {
+                leftFootX = x + 3;
+                rightFootX = x + 8;
             }
         }
+
+        // 足の影
+        graphics.fillStyle(colors.feetDark, 1);
+        graphics.fillRect(leftFootX, leftFootY + 1, 3, 4);
+        graphics.fillRect(rightFootX, rightFootY + 1, 3, 4);
+
+        // 足のメイン
+        graphics.fillStyle(colors.feet, 1);
+        graphics.fillRect(leftFootX, leftFootY, 3, 4);
+        graphics.fillRect(rightFootX, rightFootY, 3, 4);
+
+        // 足先（爪）
+        graphics.fillRect(leftFootX - 1, leftFootY + 3, 1, 2);
+        graphics.fillRect(leftFootX + 3, leftFootY + 3, 1, 2);
+        graphics.fillRect(rightFootX - 1, rightFootY + 3, 1, 2);
+        graphics.fillRect(rightFootX + 3, rightFootY + 3, 1, 2);
     }
 
     /**
