@@ -83,6 +83,12 @@ export class BattleScene extends Phaser.Scene {
     private cursor!: Phaser.GameObjects.Text;
     private isDefending: boolean = false;
 
+    // HPバー
+    private playerHpBar!: Phaser.GameObjects.Graphics;
+    private enemyHpBar!: Phaser.GameObjects.Graphics;
+    private playerHpBarBg!: Phaser.GameObjects.Graphics;
+    private enemyHpBarBg!: Phaser.GameObjects.Graphics;
+
     constructor() {
         super({ key: 'BattleScene' });
     }
@@ -220,15 +226,18 @@ export class BattleScene extends Phaser.Scene {
             }
         );
 
-        // HP表示
+        // ステータスウィンドウ（拡張版）
         const statusBg = this.add.graphics();
-        statusBg.fillStyle(0x000000, 0.7);
-        statusBg.fillRoundedRect(GAME_WIDTH - 150, 10, 140, 50, 5);
+        statusBg.fillStyle(0x000000, 0.85);
+        statusBg.fillRoundedRect(GAME_WIDTH - 160, 8, 152, 75, 5);
+        statusBg.lineStyle(2, 0x4ade80, 1);
+        statusBg.strokeRoundedRect(GAME_WIDTH - 160, 8, 152, 75, 5);
 
-        this.playerHpText = this.add.text(
-            GAME_WIDTH - 140,
-            20,
-            `HP: ${this.playerHp}/${this.playerMaxHp}`,
+        // プレイヤー名
+        this.add.text(
+            GAME_WIDTH - 150,
+            15,
+            'とりくん',
             {
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: '8px',
@@ -236,19 +245,91 @@ export class BattleScene extends Phaser.Scene {
             }
         );
 
-        this.enemyHpText = this.add.text(
-            GAME_WIDTH - 140,
-            40,
-            `${this.enemy.name}: ${this.enemy.hp}`,
+        // プレイヤーHP テキスト
+        this.playerHpText = this.add.text(
+            GAME_WIDTH - 150,
+            28,
+            `HP: ${this.playerHp}/${this.playerMaxHp}`,
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '8px',
+                fontSize: '7px',
+                color: '#ffffff'
+            }
+        );
+
+        // プレイヤーHPバー背景
+        this.playerHpBarBg = this.add.graphics();
+        this.playerHpBarBg.fillStyle(0x333333, 1);
+        this.playerHpBarBg.fillRect(GAME_WIDTH - 150, 40, 130, 8);
+
+        // プレイヤーHPバー
+        this.playerHpBar = this.add.graphics();
+        this.drawHpBar(this.playerHpBar, GAME_WIDTH - 150, 40, 130, 8, this.playerHp, this.playerMaxHp);
+
+        // 敵HP テキスト
+        this.enemyHpText = this.add.text(
+            GAME_WIDTH - 150,
+            55,
+            `${this.enemy.name}: ${this.enemy.hp}/${this.enemy.maxHp}`,
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '7px',
                 color: '#e94560'
             }
         );
 
+        // 敵HPバー背景
+        this.enemyHpBarBg = this.add.graphics();
+        this.enemyHpBarBg.fillStyle(0x333333, 1);
+        this.enemyHpBarBg.fillRect(GAME_WIDTH - 150, 67, 130, 8);
+
+        // 敵HPバー
+        this.enemyHpBar = this.add.graphics();
+        this.drawHpBar(this.enemyHpBar, GAME_WIDTH - 150, 67, 130, 8, this.enemy.hp, this.enemy.maxHp, true);
+
         // 初期状態ではコマンドを非表示
         this.setCommandVisible(false);
+    }
+
+    /**
+     * HPバーを描画
+     */
+    private drawHpBar(
+        graphics: Phaser.GameObjects.Graphics,
+        x: number,
+        y: number,
+        width: number,
+        height: number,
+        current: number,
+        max: number,
+        isEnemy: boolean = false
+    ): void {
+        graphics.clear();
+
+        const ratio = Math.max(0, current / max);
+        const barWidth = width * ratio;
+
+        // 色を決定（HP残量に応じて変化）
+        let color: number;
+        if (isEnemy) {
+            color = 0xe94560; // 敵は赤
+        } else {
+            if (ratio > 0.5) {
+                color = 0x4ade80; // 緑
+            } else if (ratio > 0.25) {
+                color = 0xfbbf24; // 黄
+            } else {
+                color = 0xe94560; // 赤
+            }
+        }
+
+        // HPバーを描画
+        graphics.fillStyle(color, 1);
+        graphics.fillRect(x, y, barWidth, height);
+
+        // 光沢効果
+        graphics.fillStyle(0xffffff, 0.3);
+        graphics.fillRect(x, y, barWidth, height / 3);
     }
 
     /**
@@ -327,19 +408,35 @@ export class BattleScene extends Phaser.Scene {
      * プレイヤーの攻撃
      */
     private playerAttackAction(): void {
-        const damage = Math.max(1, this.playerAttack - this.enemy.defense);
+        // ダメージ計算（改善版）
+        const { damage, isCritical } = this.calculateDamage(
+            this.playerAttack,
+            this.enemy.defense,
+            false
+        );
+
         this.enemy.hp -= damage;
 
-        // 敵が揺れる
+        // 敵が揺れる（クリティカル時は激しく）
         this.tweens.add({
             targets: this.enemySprite,
-            x: this.enemySprite.x + 10,
-            duration: 50,
+            x: this.enemySprite.x + (isCritical ? 20 : 10),
+            duration: isCritical ? 30 : 50,
             yoyo: true,
-            repeat: 3
+            repeat: isCritical ? 5 : 3
         });
 
-        this.showMessage(`${this.enemy.name}に${damage}のダメージ！`);
+        // ダメージポップアップ
+        this.showDamagePopup(
+            this.enemySprite.x,
+            this.enemySprite.y - 30,
+            damage,
+            isCritical
+        );
+
+        // メッセージ
+        const critText = isCritical ? 'クリティカル！ ' : '';
+        this.showMessage(`${critText}${this.enemy.name}に${damage}のダメージ！`);
         this.updateHpDisplay();
 
         this.time.delayedCall(1500, () => {
@@ -390,18 +487,31 @@ export class BattleScene extends Phaser.Scene {
     private startEnemyTurn(): void {
         this.battleState = 'enemyTurn';
 
-        let damage = Math.max(1, this.enemy.attack - this.playerDefense);
-        if (this.isDefending) {
-            damage = Math.floor(damage / 2);
-        }
+        // ダメージ計算（改善版）
+        const { damage, isCritical } = this.calculateDamage(
+            this.enemy.attack,
+            this.playerDefense,
+            this.isDefending
+        );
 
         this.playerHp -= damage;
 
         // プレイヤーのダメージエフェクト（画面揺れ）
-        this.cameras.main.shake(100, 0.01);
+        const shakeIntensity = isCritical ? 0.02 : 0.01;
+        this.cameras.main.shake(isCritical ? 200 : 100, shakeIntensity);
 
+        // ダメージポップアップ（画面中央下部）
+        this.showDamagePopup(
+            GAME_WIDTH / 2,
+            GAME_HEIGHT * 0.65,
+            damage,
+            isCritical
+        );
+
+        // メッセージ
+        const critText = isCritical ? 'クリティカル！ ' : '';
         const defenseText = this.isDefending ? '（ぼうぎょ中）' : '';
-        this.showMessage(`${this.enemy.name}のこうげき！\n${damage}のダメージをうけた！${defenseText}`);
+        this.showMessage(`${this.enemy.name}のこうげき！\n${critText}${damage}のダメージをうけた！${defenseText}`);
         this.updateHpDisplay();
 
         this.time.delayedCall(2000, () => {
@@ -474,14 +584,95 @@ export class BattleScene extends Phaser.Scene {
      * HP表示を更新
      */
     private updateHpDisplay(): void {
+        // テキスト更新
         this.playerHpText.setText(`HP: ${Math.max(0, this.playerHp)}/${this.playerMaxHp}`);
-        this.enemyHpText.setText(`${this.enemy.name}: ${Math.max(0, this.enemy.hp)}`);
+        this.enemyHpText.setText(`${this.enemy.name}: ${Math.max(0, this.enemy.hp)}/${this.enemy.maxHp}`);
 
-        // HPに応じて色を変更
-        if (this.playerHp < this.playerMaxHp * 0.3) {
-            this.playerHpText.setColor('#e94560');
-        } else if (this.playerHp < this.playerMaxHp * 0.5) {
-            this.playerHpText.setColor('#fbbf24');
+        // HPバー更新
+        this.drawHpBar(this.playerHpBar, GAME_WIDTH - 150, 40, 130, 8, this.playerHp, this.playerMaxHp);
+        this.drawHpBar(this.enemyHpBar, GAME_WIDTH - 150, 67, 130, 8, this.enemy.hp, this.enemy.maxHp, true);
+    }
+
+    /**
+     * ダメージ計算（改善版）
+     * - 基本ダメージ = 攻撃力 - 防御力/2
+     * - 乱数 0.9〜1.1倍
+     * - クリティカル 15%で1.5倍
+     */
+    private calculateDamage(
+        attack: number,
+        defense: number,
+        isDefending: boolean
+    ): { damage: number; isCritical: boolean } {
+        // 基本ダメージ
+        let baseDamage = attack - Math.floor(defense / 2);
+
+        // 乱数（0.9〜1.1倍）
+        const randomMultiplier = 0.9 + Math.random() * 0.2;
+        baseDamage = Math.floor(baseDamage * randomMultiplier);
+
+        // クリティカル判定（15%）
+        const isCritical = Math.random() < 0.15;
+        if (isCritical) {
+            baseDamage = Math.floor(baseDamage * 1.5);
+        }
+
+        // 防御中は半減
+        if (isDefending) {
+            baseDamage = Math.floor(baseDamage / 2);
+        }
+
+        // 最低1ダメージ保証
+        const damage = Math.max(1, baseDamage);
+
+        return { damage, isCritical };
+    }
+
+    /**
+     * ダメージポップアップを表示
+     */
+    private showDamagePopup(
+        x: number,
+        y: number,
+        damage: number,
+        isCritical: boolean
+    ): void {
+        const color = isCritical ? '#fbbf24' : '#ffffff';
+        const fontSize = isCritical ? '14px' : '12px';
+        const text = isCritical ? `${damage}!` : `${damage}`;
+
+        const popup = this.add.text(x, y, text, {
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: fontSize,
+            color: color,
+            stroke: '#000000',
+            strokeThickness: 3
+        });
+        popup.setOrigin(0.5);
+        popup.setDepth(100);
+
+        // アニメーション（上に浮かびながらフェードアウト）
+        this.tweens.add({
+            targets: popup,
+            y: y - 40,
+            alpha: 0,
+            duration: 1000,
+            ease: 'Power2',
+            onComplete: () => {
+                popup.destroy();
+            }
+        });
+
+        // クリティカル時は揺れ効果
+        if (isCritical) {
+            this.tweens.add({
+                targets: popup,
+                scaleX: 1.2,
+                scaleY: 1.2,
+                duration: 100,
+                yoyo: true,
+                repeat: 2
+            });
         }
     }
 }
