@@ -304,15 +304,19 @@ export class MapScene extends Phaser.Scene {
             startY = this.lastGridY * TILE_SIZE + TILE_SIZE / 2;
         }
 
-        // プレイヤースプライト（スプライトシート使用）
+        // プレイヤースプライト（16x24スプライトシート使用）
         this.player = this.add.sprite(startX, startY, 'player', 0);
         this.player.setDepth(10);
+
+        // スプライトのアンカーを足元に設定（16x24の下部中央）
+        this.player.setOrigin(0.5, 1);
 
         // 物理演算を有効化
         this.physics.add.existing(this.player);
         const body = this.player.body as Phaser.Physics.Arcade.Body;
-        body.setSize(12, 12);
-        body.setOffset(2, 2);
+        // 衝突判定は足元のみ（12x8ピクセル）
+        body.setSize(12, 8);
+        body.setOffset(2, 16); // スプライトの下部に配置
 
         // 初期グリッド位置を記録
         this.lastGridX = Math.floor(startX / TILE_SIZE);
