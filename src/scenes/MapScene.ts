@@ -43,6 +43,7 @@ export class MapScene extends Phaser.Scene {
 
     // 移動状態
     private isMoving: boolean = false;
+    private currentDirection: string = 'down'; // 現在の向き
 
     // エンカウント関連
     private stepCount: number = 0;
@@ -303,8 +304,8 @@ export class MapScene extends Phaser.Scene {
             startY = this.lastGridY * TILE_SIZE + TILE_SIZE / 2;
         }
 
-        // プレイヤースプライト
-        this.player = this.add.sprite(startX, startY, 'player');
+        // プレイヤースプライト（スプライトシート使用）
+        this.player = this.add.sprite(startX, startY, 'player', 0);
         this.player.setDepth(10);
 
         // 物理演算を有効化
@@ -316,6 +317,10 @@ export class MapScene extends Phaser.Scene {
         // 初期グリッド位置を記録
         this.lastGridX = Math.floor(startX / TILE_SIZE);
         this.lastGridY = Math.floor(startY / TILE_SIZE);
+
+        // 初期アニメーション（下向き待機）
+        this.player.play('player-idle-down');
+        this.currentDirection = 'down';
     }
 
     /**
@@ -395,19 +400,24 @@ export class MapScene extends Phaser.Scene {
 
         let velocityX = 0;
         let velocityY = 0;
+        let newDirection = this.currentDirection;
 
         // 左右移動
         if (this.cursors.left.isDown || this.wasd.A.isDown) {
             velocityX = -PLAYER_SPEED;
+            newDirection = 'left';
         } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
             velocityX = PLAYER_SPEED;
+            newDirection = 'right';
         }
 
         // 上下移動
         if (this.cursors.up.isDown || this.wasd.W.isDown) {
             velocityY = -PLAYER_SPEED;
+            newDirection = 'up';
         } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
             velocityY = PLAYER_SPEED;
+            newDirection = 'down';
         }
 
         // 斜め移動の正規化
@@ -448,7 +458,32 @@ export class MapScene extends Phaser.Scene {
         }
 
         body.setVelocity(velocityX, velocityY);
+
+        const wasMoving = this.isMoving;
         this.isMoving = velocityX !== 0 || velocityY !== 0;
+
+        // アニメーション制御
+        this.updatePlayerAnimation(newDirection, wasMoving);
+    }
+
+    /**
+     * プレイヤーアニメーションを更新
+     */
+    private updatePlayerAnimation(newDirection: string, wasMoving: boolean): void {
+        const directionChanged = newDirection !== this.currentDirection;
+
+        if (this.isMoving) {
+            // 歩行中
+            if (directionChanged || !wasMoving) {
+                this.currentDirection = newDirection;
+                this.player.play(`player-walk-${newDirection}`, true);
+            }
+        } else {
+            // 停止
+            if (wasMoving) {
+                this.player.play(`player-idle-${this.currentDirection}`, true);
+            }
+        }
     }
 
     /**

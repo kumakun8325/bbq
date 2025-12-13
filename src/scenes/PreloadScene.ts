@@ -225,31 +225,159 @@ export class PreloadScene extends Phaser.Scene {
     }
 
     /**
-     * プレイヤーテクスチャを生成（より見やすいデザイン）
+     * プレイヤースプライトシートを生成（4方向 × 3フレーム）
+     * レイアウト: 3列 x 4行 = 48x64ピクセル
+     * 行0: 下向き (frame 0-2)
+     * 行1: 左向き (frame 3-5)
+     * 行2: 右向き (frame 6-8)
+     * 行3: 上向き (frame 9-11)
      */
     private createPlayerTexture(): void {
         const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 16;
+        const frameHeight = 16;
+        const framesPerDirection = 3;
+        const directions = 4;
 
-        // 体（緑）
-        graphics.fillStyle(0x4ade80, 1);
-        graphics.fillRect(4, 4, 8, 10);
+        // 色定義
+        const colors = {
+            body: 0x4ade80,       // 体（緑）
+            bodyLight: 0x86efac,  // 明るい緑
+            bodyDark: 0x166534,   // 暗い緑
+            beak: 0xfbbf24,       // くちばし（オレンジ）
+            eye: 0x1f2937,        // 目（黒）
+            feet: 0xf97316,       // 足（オレンジ）
+            wing: 0x22c55e,       // 羽（緑）
+        };
 
-        // 頭（明るい緑）
-        graphics.fillStyle(0x86efac, 1);
-        graphics.fillRect(5, 2, 6, 5);
+        // 各方向と各フレームを描画
+        for (let dir = 0; dir < directions; dir++) {
+            for (let frame = 0; frame < framesPerDirection; frame++) {
+                const x = frame * frameWidth;
+                const y = dir * frameHeight;
+                this.drawBirdFrame(graphics, x, y, dir, frame, colors);
+            }
+        }
 
-        // 目
-        graphics.fillStyle(0x1f2937, 1);
-        graphics.fillRect(6, 4, 2, 2);
-        graphics.fillRect(9, 4, 2, 2);
-
-        // 足
-        graphics.fillStyle(0x166534, 1);
-        graphics.fillRect(4, 12, 3, 2);
-        graphics.fillRect(9, 12, 3, 2);
-
-        graphics.generateTexture('player', 16, 16);
+        graphics.generateTexture('player', frameWidth * framesPerDirection, frameHeight * directions);
         graphics.destroy();
+    }
+
+    /**
+     * 鳥キャラクターの1フレームを描画
+     * @param graphics Graphicsオブジェクト
+     * @param x フレームのX座標
+     * @param y フレームのY座標
+     * @param direction 方向 (0:下, 1:左, 2:右, 3:上)
+     * @param frame フレーム番号 (0-2: 歩行サイクル)
+     * @param colors 色定義
+     */
+    private drawBirdFrame(
+        graphics: Phaser.GameObjects.Graphics,
+        x: number,
+        y: number,
+        direction: number,
+        frame: number,
+        colors: { [key: string]: number }
+    ): void {
+        // 歩行アニメーションのオフセット
+        const walkOffset = frame === 1 ? 1 : 0; // 中間フレームで少し上に
+        const feetOffset = frame === 0 ? 0 : (frame === 1 ? 1 : 2); // 足の動き
+
+        // 体のベース位置
+        const bodyY = y + 4 - walkOffset;
+
+        // 体（丸い鳥のボディ）
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 3, bodyY + 2, 10, 9, 3);
+
+        // 体のハイライト
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 5, bodyY + 3, 4, 3);
+
+        // 方向によって顔のパーツを変える
+        switch (direction) {
+            case 0: // 下向き
+                // 目（2つ）
+                graphics.fillStyle(colors.eye, 1);
+                graphics.fillRect(x + 5, bodyY + 5, 2, 2);
+                graphics.fillRect(x + 9, bodyY + 5, 2, 2);
+                // くちばし
+                graphics.fillStyle(colors.beak, 1);
+                graphics.fillRect(x + 7, bodyY + 8, 2, 2);
+                break;
+
+            case 1: // 左向き
+                // 目（1つ、左側）
+                graphics.fillStyle(colors.eye, 1);
+                graphics.fillRect(x + 4, bodyY + 5, 2, 2);
+                // くちばし
+                graphics.fillStyle(colors.beak, 1);
+                graphics.fillRect(x + 2, bodyY + 6, 3, 2);
+                // 羽
+                graphics.fillStyle(colors.wing, 1);
+                graphics.fillRect(x + 10, bodyY + 4, 3, 4);
+                break;
+
+            case 2: // 右向き
+                // 目（1つ、右側）
+                graphics.fillStyle(colors.eye, 1);
+                graphics.fillRect(x + 10, bodyY + 5, 2, 2);
+                // くちばし
+                graphics.fillStyle(colors.beak, 1);
+                graphics.fillRect(x + 11, bodyY + 6, 3, 2);
+                // 羽
+                graphics.fillStyle(colors.wing, 1);
+                graphics.fillRect(x + 3, bodyY + 4, 3, 4);
+                break;
+
+            case 3: // 上向き
+                // 後頭部のみ（顔は見えない）
+                graphics.fillStyle(colors.bodyDark, 1);
+                graphics.fillRect(x + 5, bodyY + 3, 6, 4);
+                // しっぽ
+                graphics.fillStyle(colors.wing, 1);
+                graphics.fillRect(x + 6, bodyY + 9, 4, 2);
+                break;
+        }
+
+        // 足（歩行アニメーション）
+        graphics.fillStyle(colors.feet, 1);
+        if (direction === 1) { // 左向き
+            // 足を交互に
+            if (feetOffset === 0) {
+                graphics.fillRect(x + 5, y + 12, 2, 3);
+                graphics.fillRect(x + 9, y + 12, 2, 3);
+            } else if (feetOffset === 1) {
+                graphics.fillRect(x + 4, y + 12, 2, 3);
+                graphics.fillRect(x + 10, y + 12, 2, 3);
+            } else {
+                graphics.fillRect(x + 6, y + 12, 2, 3);
+                graphics.fillRect(x + 8, y + 12, 2, 3);
+            }
+        } else if (direction === 2) { // 右向き
+            if (feetOffset === 0) {
+                graphics.fillRect(x + 5, y + 12, 2, 3);
+                graphics.fillRect(x + 9, y + 12, 2, 3);
+            } else if (feetOffset === 1) {
+                graphics.fillRect(x + 6, y + 12, 2, 3);
+                graphics.fillRect(x + 10, y + 12, 2, 3);
+            } else {
+                graphics.fillRect(x + 4, y + 12, 2, 3);
+                graphics.fillRect(x + 8, y + 12, 2, 3);
+            }
+        } else { // 上下向き
+            if (feetOffset === 0) {
+                graphics.fillRect(x + 5, y + 12, 2, 3);
+                graphics.fillRect(x + 9, y + 12, 2, 3);
+            } else if (feetOffset === 1) {
+                graphics.fillRect(x + 4, y + 13, 2, 2);
+                graphics.fillRect(x + 10, y + 13, 2, 2);
+            } else {
+                graphics.fillRect(x + 6, y + 13, 2, 2);
+                graphics.fillRect(x + 8, y + 13, 2, 2);
+            }
+        }
     }
 
     /**
@@ -276,7 +404,87 @@ export class PreloadScene extends Phaser.Scene {
     create(): void {
         console.log('PreloadScene: Assets loaded');
 
+        // プレイヤーアニメーションを定義
+        this.createPlayerAnimations();
+
         // タイトルシーンへ遷移
         this.scene.start('TitleScene');
+    }
+
+    /**
+     * プレイヤーアニメーションを定義
+     */
+    private createPlayerAnimations(): void {
+        const frameRate = 8;
+        const frameWidth = 16;
+        const frameHeight = 16;
+
+        // 下向き歩行 (行0: フレーム0-2)
+        this.anims.create({
+            key: 'player-walk-down',
+            frames: this.anims.generateFrameNumbers('player', {
+                start: 0,
+                end: 2
+            }),
+            frameRate: frameRate,
+            repeat: -1
+        });
+
+        // 左向き歩行 (行1: フレーム3-5)
+        this.anims.create({
+            key: 'player-walk-left',
+            frames: this.anims.generateFrameNumbers('player', {
+                start: 3,
+                end: 5
+            }),
+            frameRate: frameRate,
+            repeat: -1
+        });
+
+        // 右向き歩行 (行2: フレーム6-8)
+        this.anims.create({
+            key: 'player-walk-right',
+            frames: this.anims.generateFrameNumbers('player', {
+                start: 6,
+                end: 8
+            }),
+            frameRate: frameRate,
+            repeat: -1
+        });
+
+        // 上向き歩行 (行3: フレーム9-11)
+        this.anims.create({
+            key: 'player-walk-up',
+            frames: this.anims.generateFrameNumbers('player', {
+                start: 9,
+                end: 11
+            }),
+            frameRate: frameRate,
+            repeat: -1
+        });
+
+        // 待機アニメーション（各方向の最初のフレーム）
+        this.anims.create({
+            key: 'player-idle-down',
+            frames: [{ key: 'player', frame: 0 }],
+            frameRate: 1
+        });
+        this.anims.create({
+            key: 'player-idle-left',
+            frames: [{ key: 'player', frame: 3 }],
+            frameRate: 1
+        });
+        this.anims.create({
+            key: 'player-idle-right',
+            frames: [{ key: 'player', frame: 6 }],
+            frameRate: 1
+        });
+        this.anims.create({
+            key: 'player-idle-up',
+            frames: [{ key: 'player', frame: 9 }],
+            frameRate: 1
+        });
+
+        console.log('Player animations created');
     }
 }
