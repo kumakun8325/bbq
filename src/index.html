@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="BBQ (Bird Battle Quest) - FF6 × オクトパストラベラー風 2D RPG">
+  <meta name="theme-color" content="#1a1a2e">
+  <title>BBQ - Bird Battle Quest</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #0f0f1a;
+    }
+    
+    #game-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    
+    /* Loading screen */
+    #loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      transition: opacity 0.5s ease-out;
+    }
+    
+    #loading.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    #loading h1 {
+      font-family: 'Press Start 2P', monospace, sans-serif;
+      font-size: 2rem;
+      color: #e94560;
+      text-shadow: 0 0 10px rgba(233, 69, 96, 0.5);
+      margin-bottom: 2rem;
+      letter-spacing: 0.2em;
+    }
+    
+    #loading .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(233, 69, 96, 0.3);
+      border-top-color: #e94560;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    #loading p {
+      font-family: sans-serif;
+      color: #a0a0a0;
+      margin-top: 1.5rem;
+      font-size: 0.9rem;
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="loading">
+    <h1>BBQ</h1>
+    <div class="spinner"></div>
+    <p>Now Loading...</p>
+  </div>
+  <div id="game-container"></div>
+</body>
+</html>
