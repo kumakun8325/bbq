@@ -501,57 +501,75 @@ export class BattleScene extends Phaser.Scene {
      * - 右: パーティ4人分のステータス
      */
     /**
-     * UIを作成（SFC風レイアウト）
-     * - 下部: パーティステータスウィンドウ（全幅）
+     * UIを作成（SFC風レイアウト：2ウィンドウ構成）
+     * - 左下: 敵名ウィンドウ
+     * - 右下: パーティステータスウィンドウ
      * - コマンド: キャラクターの上にポップアップ表示
-     * - 敵名: 選択時や出現時に上部に表示（常時表示ウィンドウは廃止）
      */
     private createUI(): void {
         const uiY = GAME_HEIGHT - 150;  // UI開始Y位置（下部）
         const windowHeight = 140;       // ウィンドウ高さ
+        const margin = 10;
+        const gap = 4; // ウィンドウ間の隙間
 
-        // メインステータスウィンドウ（画面下部全体）
-        const statusBg = this.add.graphics();
-        statusBg.fillStyle(0x000044, 0.9); // 濃い青背景
-        statusBg.fillRect(10, uiY, GAME_WIDTH - 20, windowHeight);
+        // ウィンドウ幅の計算 (左35%, 右65%くらい)
+        const totalWidth = GAME_WIDTH - (margin * 2);
+        const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+        const partyWindowWidth = totalWidth - enemyWindowWidth - gap;
 
-        // 白い枠線（二重線風）
-        statusBg.lineStyle(4, 0xffffff, 1);
-        statusBg.strokeRect(12, uiY + 2, GAME_WIDTH - 24, windowHeight - 4);
-        statusBg.lineStyle(2, 0xaaaaaa, 1); // 内側の少し暗い線
-        statusBg.strokeRect(16, uiY + 6, GAME_WIDTH - 32, windowHeight - 12);
+        // 1. 敵名ウィンドウ (左)
+        const enemyWindowX = margin;
+        this.drawWindow(enemyWindowX, uiY, enemyWindowWidth, windowHeight);
+
+        // 敵名表示
+        this.add.text(
+            enemyWindowX + 20,
+            uiY + 24,
+            this.enemy.name,
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '18px',
+                color: '#ffffff',
+                shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 0, fill: true }
+            }
+        );
+
+        // 2. パーティステータスウィンドウ (右)
+        const partyWindowX = enemyWindowX + enemyWindowWidth + gap;
+        this.drawWindow(partyWindowX, uiY, partyWindowWidth, windowHeight);
 
         // パーティステータス表示
         this.partyHpTexts = [];
         this.partyAtbBars = [];
 
-        const startX = 40;
-        const colWidth = (GAME_WIDTH - 80) / 2; // 2列表示にするか、SFC風に縦に並べるか
-        // SFC動画を見ると、縦に4人並んでいる
-
         const rowHeight = 32;
+        // 各カラムの相対X位置
+        const nameRelX = 20;
+        const hpRelX = 160;
+        const atbRelX = 300;
+        const atbWidth = 100;
 
         for (let i = 0; i < this.partyCount; i++) {
             const member = this.partyMembers[i];
             const rowY = uiY + 20 + (i * rowHeight);
 
-            // 1. 名前 (左端)
+            // 名前
             this.add.text(
-                startX,
+                partyWindowX + nameRelX,
                 rowY,
                 member.name,
                 {
                     fontFamily: '"Press Start 2P", monospace',
                     fontSize: '16px',
-                    color: '#e0e0e0', // 少しグレーがかった白
+                    color: '#e0e0e0',
                     shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 0, fill: true }
                 }
             );
 
-            // 2. HP (中央左) - SFC版は数値のみ "144/ 144" のような形式
+            // HP (数値)
             const hpStr = `${member.hp}`.padStart(4, ' ') + '/' + `${member.maxHp}`.padStart(4, ' ');
             const hpText = this.add.text(
-                startX + 180,
+                partyWindowX + hpRelX,
                 rowY,
                 hpStr,
                 {
@@ -563,27 +581,24 @@ export class BattleScene extends Phaser.Scene {
             );
             this.partyHpTexts.push(hpText);
 
-            // 3. ATBゲージ (右側) - SFC版は細長い棒状
-            const atbX = startX + 380;
-            const atbWidth = 120;
+            // ATBゲージ
+            const atbAbsX = partyWindowX + atbRelX;
 
-            // 枠とゲージの位置調整（ズレ修正）
             // 枠
             const atbFrame = this.add.graphics();
             atbFrame.lineStyle(2, 0xaaaaaa, 1);
-            atbFrame.strokeRoundedRect(atbX, rowY + 6, atbWidth, 12, 6); // 丸みのある枠
+            atbFrame.strokeRoundedRect(atbAbsX, rowY + 6, atbWidth, 12, 6);
 
-            // ゲージ本体（枠の内側に綺麗に収める）
-            // 枠線が2pxなので、x,yともに+2pxオフセットし、幅高さを-4pxする
+            // ゲージ本体
             const atbBar = this.add.graphics();
-            this.drawAtbBar(atbBar, atbX + 2, rowY + 8, atbWidth - 4, 8, member.atb, member.maxAtb);
+            this.drawAtbBar(atbBar, atbAbsX + 2, rowY + 8, atbWidth - 4, 8, member.atb, member.maxAtb);
             this.partyAtbBars.push(atbBar);
         }
 
         // 互換性のため
         this.playerHpText = this.partyHpTexts[0];
 
-        // このメッセージテキストは上部インフォメーション用のみに使用（ターン表示には使わない）
+        // メッセージテキスト（画面上部中央）
         this.messageText = this.add.text(
             GAME_WIDTH / 2,
             40,
@@ -629,8 +644,29 @@ export class BattleScene extends Phaser.Scene {
     }
 
     /**
+     * 標準的な青いウィンドウを描画するヘルパー
+     */
+    private drawWindow(x: number, y: number, width: number, height: number): Phaser.GameObjects.Graphics {
+        const g = this.add.graphics();
+
+        // 背景
+        g.fillStyle(0x000044, 0.9);
+        g.fillRect(x, y, width, height);
+
+        // 外枠（白）
+        g.lineStyle(4, 0xffffff, 1);
+        g.strokeRect(x + 2, y + 2, width - 4, height - 4);
+
+        // 内枠（グレー）
+        g.lineStyle(2, 0xaaaaaa, 1);
+        g.strokeRect(x + 6, y + 6, width - 12, height - 12);
+
+        return g;
+    }
+
+    /**
      * コマンドウィンドウの内容を更新（ポップアップ風）
-     * キャラクターの頭上ではなく、SFC版動画では左下にコマンドウィンドウが出ている
+     * キャラクターの頭上ではなく、SFC版動画では左下にコマンドウィンドウが出る
      * 「たたかう」「ひっさつ」「まほう」「アイテム」などの縦並びウィンドウ
      */
     private updateCommandWindow(): void {
