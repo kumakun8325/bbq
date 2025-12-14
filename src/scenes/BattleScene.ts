@@ -150,7 +150,7 @@ export class BattleScene extends Phaser.Scene {
     private commands: BattleCommand[] = ['attack', 'skill', 'item']; // メインコマンド
 
     // UI要素
-    private commandTexts: Phaser.GameObjects.Text[] = [];
+    private commandTexts: (Phaser.GameObjects.Text | Phaser.GameObjects.Graphics)[] = [];
     private enemyNameTexts: Phaser.GameObjects.Text[] = []; // 敵名リスト
     private messageText!: Phaser.GameObjects.Text;
     private playerHpText!: Phaser.GameObjects.Text;
@@ -501,143 +501,108 @@ export class BattleScene extends Phaser.Scene {
      * - 右: パーティ4人分のステータス
      */
     /**
-     * UIを作成（FF6風レイアウト: 3ウィンドウ）
-     * - 左: コマンドメニュー
-     * - 中央: 敵名リスト
-     * - 右: パーティステータス
+     * UIを作成（SFC風レイアウト）
+     * - 下部: パーティステータスウィンドウ（全幅）
+     * - コマンド: キャラクターの上にポップアップ表示
+     * - 敵名: 選択時や出現時に上部に表示（常時表示ウィンドウは廃止）
      */
     private createUI(): void {
-        const uiY = GAME_HEIGHT - 180;  // UI開始Y位置
-        const windowHeight = 170;
+        const uiY = GAME_HEIGHT - 150;  // UI開始Y位置（下部）
+        const windowHeight = 140;       // ウィンドウ高さ
 
-        // Window 1: コマンド (左 25%)
-        const cmdX = 10;
-        const cmdWidth = 110;
-
-        const cmdBg = this.add.graphics();
-        cmdBg.fillStyle(0x000044, 0.9);
-        cmdBg.fillRect(cmdX, uiY, cmdWidth, windowHeight);
-        cmdBg.lineStyle(3, 0x4444aa, 1);
-        cmdBg.strokeRect(cmdX, uiY, cmdWidth, windowHeight);
-
-        // コマンドテキスト（初期作成）
-        this.updateCommandWindow();
-
-        // カーソル
-        this.cursor = this.add.text(
-            cmdX + 15,
-            uiY + 20,
-            '▶',
-            {
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: '16px',
-                color: '#ffffff'
-            }
-        );
-
-        // Window 2: 敵名 (中央 25%)
-        const enemyX = cmdX + cmdWidth + 10;
-        const enemyWidth = 110;
-
-        const enemyBg = this.add.graphics();
-        enemyBg.fillStyle(0x000044, 0.9);
-        enemyBg.fillRect(enemyX, uiY, enemyWidth, windowHeight);
-        enemyBg.lineStyle(3, 0x4444aa, 1);
-        enemyBg.strokeRect(enemyX, uiY, enemyWidth, windowHeight);
-
-        // 敵名表示（現在は1体のみ）
-        const enemyNameText = this.add.text(
-            enemyX + 15,
-            uiY + 20,
-            this.enemy.name,
-            {
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: '14px',
-                color: '#ffffff'
-            }
-        );
-        this.enemyNameTexts.push(enemyNameText);
-
-        // Window 3: パーティステータス (右 50%)
-        const statusX = enemyX + enemyWidth + 10;
-        const statusWidth = GAME_WIDTH - statusX - 10;
-
+        // メインステータスウィンドウ（画面下部全体）
         const statusBg = this.add.graphics();
-        statusBg.fillStyle(0x000044, 0.9);
-        statusBg.fillRect(statusX, uiY, statusWidth, windowHeight);
-        statusBg.lineStyle(3, 0x4444aa, 1);
-        statusBg.strokeRect(statusX, uiY, statusWidth, windowHeight);
+        statusBg.fillStyle(0x000044, 0.9); // 濃い青背景
+        statusBg.fillRect(10, uiY, GAME_WIDTH - 20, windowHeight);
 
-        // 4人分のステータスを表示
+        // 白い枠線（二重線風）
+        statusBg.lineStyle(4, 0xffffff, 1);
+        statusBg.strokeRect(12, uiY + 2, GAME_WIDTH - 24, windowHeight - 4);
+        statusBg.lineStyle(2, 0xaaaaaa, 1); // 内側の少し暗い線
+        statusBg.strokeRect(16, uiY + 6, GAME_WIDTH - 32, windowHeight - 12);
+
+        // パーティステータス表示
         this.partyHpTexts = [];
         this.partyAtbBars = [];
-        const memberHeight = 40;
+
+        const startX = 40;
+        const colWidth = (GAME_WIDTH - 80) / 2; // 2列表示にするか、SFC風に縦に並べるか
+        // SFC動画を見ると、縦に4人並んでいる
+
+        const rowHeight = 32;
 
         for (let i = 0; i < this.partyCount; i++) {
             const member = this.partyMembers[i];
-            const rowY = uiY + 10 + (i * memberHeight);
+            const rowY = uiY + 20 + (i * rowHeight);
 
-            // メンバー名
+            // 1. 名前 (左端)
             this.add.text(
-                statusX + 10,
+                startX,
                 rowY,
                 member.name,
                 {
                     fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '14px',
-                    color: '#ffffff'
+                    fontSize: '16px',
+                    color: '#e0e0e0', // 少しグレーがかった白
+                    shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 0, fill: true }
                 }
             );
 
-            // HP数値 (Current / Max)
+            // 2. HP (中央左) - SFC版は数値のみ "144/ 144" のような形式
+            const hpStr = `${member.hp}`.padStart(4, ' ') + '/' + `${member.maxHp}`.padStart(4, ' ');
             const hpText = this.add.text(
-                statusX + 180,
+                startX + 180,
                 rowY,
-                `${Math.max(0, member.hp)}/${member.maxHp}`,
+                hpStr,
                 {
                     fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '14px',
-                    color: '#ffffff'
+                    fontSize: '16px',
+                    color: '#ffffff',
+                    shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 0, fill: true }
                 }
             );
-            hpText.setOrigin(1, 0); // 右寄せ
             this.partyHpTexts.push(hpText);
 
-            // ATBゲージ背景
-            const atbX = statusX + 190;
-            const atbWidth = statusWidth - 200;
-            const barBg = this.add.graphics();
-            barBg.fillStyle(0x333333, 1);
-            barBg.fillRect(atbX, rowY + 4, atbWidth, 20);
+            // 3. ATBゲージ (右側) - SFC版は細長い棒状
+            const atbX = startX + 380;
+            const atbWidth = 120;
 
-            // ATBゲージ
+            // 枠
+            const atbFrame = this.add.graphics();
+            atbFrame.lineStyle(2, 0xaaaaaa, 1);
+            atbFrame.strokeRoundedRect(atbX, rowY + 4, atbWidth, 12, 6); // 丸みのある枠
+
+            // ゲージ本体
             const atbBar = this.add.graphics();
-            this.drawAtbBar(atbBar, atbX, rowY + 4, atbWidth, 20, member.atb, member.maxAtb);
+            this.drawAtbBar(atbBar, atbX + 2, rowY + 6, atbWidth - 4, 8, member.atb, member.maxAtb);
             this.partyAtbBars.push(atbBar);
         }
 
         // 互換性のため
         this.playerHpText = this.partyHpTexts[0];
 
-        // メッセージテキスト（上部）
+        // メッセージテキスト（画面上部中央）
         this.messageText = this.add.text(
             GAME_WIDTH / 2,
-            120,
+            40,
             '',
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '16px',
+                fontSize: '18px',
                 color: '#ffffff',
-                backgroundColor: '#000044',
-                padding: { x: 10, y: 6 }
+                backgroundColor: '#000044aa', // 半透明背景
+                padding: { x: 20, y: 10 }
             }
         );
         this.messageText.setOrigin(0.5);
         this.messageText.setScrollFactor(0);
         this.messageText.setDepth(1000);
 
-        // 初期状態ではコマンドを非表示
-        this.setCommandVisible(false);
+        // 枠線付きメッセージウィンドウ風にする
+        this.messageText.setStroke('#aaaaaa', 2);
+
+        // コマンドウィンドウ（初期は非表示のコンテナとして作成推奨だが、今回は既存ロジック流用で動的に描画）
+        // createUIでは初期化のみ
 
         // ターン数表示
         this.turnText = this.add.text(16, 16, `TURN: ${this.turnCount}`, {
@@ -645,20 +610,42 @@ export class BattleScene extends Phaser.Scene {
             fontSize: '16px',
             color: '#ffffff'
         });
+
+        // カーソル
+        this.cursor = this.add.text(
+            0, // 位置はupdateCursorPositionで設定
+            0,
+            '▶',
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '16px',
+                color: '#ffffff'
+            }
+        );
+        this.cursor.setVisible(false); // 初期は非表示
     }
 
     /**
-     * コマンドウィンドウの内容を更新
+     * コマンドウィンドウの内容を更新（ポップアップ風）
+     * キャラクターの頭上ではなく、SFC版動画では左下にコマンドウィンドウが出ている
+     * 「たたかう」「ひっさつ」「まほう」「アイテム」などの縦並びウィンドウ
      */
     private updateCommandWindow(): void {
         // 既存のテキストをクリア
         this.commandTexts.forEach(t => t.destroy());
         this.commandTexts = [];
 
-        const uiY = GAME_HEIGHT - 180;
-        const startX = 40;
-        const startY = uiY + 20;
-        const lineHeight = 36;
+        // 背景も再描画が必要（updateCommandWindowで管理していないため、別途管理が必要）
+        // 簡易的にここで背景Graphicsも管理するか、固定位置ならcreateUIで作る
+        // ご要望の動画を見ると、左下のステータスウィンドウの上に被さるようにコマンドウィンドウが出る
+
+        const cmdX = 20;
+        const cmdY = GAME_HEIGHT - 280; // ステータスウィンドウの上
+        const cmdWidth = 160;
+
+        // 背景（毎回クリアするのは非効率だが、簡略化のため）
+        // TODO: コマンドウィンドウ背景をメンバ変数に持って管理する
+        // const uiY = GAME_HEIGHT - 180; // 前のコードのY位置参照用
 
         let commandsToShow: string[] = [];
 
@@ -667,8 +654,7 @@ export class BattleScene extends Phaser.Scene {
             let skillName = 'とくぎ';
             if (this.activePartyMemberIndex >= 0) {
                 const member = this.partyMembers[this.activePartyMemberIndex];
-                // 型定義に追加済みの specialCommandName を使用
-                // @ts-ignore: 一時的に型エラー回避（前のステップで追加済みだが反映待ちの可能性）
+                // @ts-ignore
                 skillName = member.specialCommandName || 'とくぎ';
             }
             commandsToShow = ['たたかう', skillName, 'アイテム'];
@@ -678,34 +664,56 @@ export class BattleScene extends Phaser.Scene {
             commandsToShow = ['にげる'];
         }
 
+        // 背景描画（簡易実装：テキストの裏に追加）
+        const bg = this.add.graphics();
+        bg.fillStyle(0x000044, 0.95);
+        bg.fillRect(cmdX, cmdY, cmdWidth, commandsToShow.length * 40 + 20);
+        bg.lineStyle(4, 0xffffff, 1);
+        bg.strokeRect(cmdX + 2, cmdY + 2, cmdWidth - 4, commandsToShow.length * 40 + 16);
+        bg.setDepth(190);
+        // このbgをどこかで消す必要がある。commandTextsと一緒に管理するハック
+        // @ts-ignore
+        bg.destroyOnClear = true;
+
+        // コマンドテキスト生成
         commandsToShow.forEach((label, index) => {
             const text = this.add.text(
-                startX,
-                startY + index * lineHeight,
+                cmdX + 30,
+                cmdY + 20 + index * 36,
                 label,
                 {
                     fontFamily: '"Press Start 2P", monospace',
                     fontSize: '16px',
-                    color: '#ffffff'
+                    color: '#ffffff',
+                    shadow: { offsetX: 1, offsetY: 1, color: '#000', blur: 0, fill: true }
                 }
             );
+            text.setDepth(200);
             this.commandTexts.push(text);
         });
+
+        // 背景を配列の最後に突っ込んでおく（cleanup用）
+        // @ts-ignore
+        this.commandTexts.push(bg);
     }
 
     /**
      * コマンドカーソル位置更新
      */
     private updateCursorPosition(): void {
-        const uiY = GAME_HEIGHT - 180;
-        const startY = uiY + 20;
+        const cmdX = 20;
+        const cmdY = GAME_HEIGHT - 280;
         const lineHeight = 36;
 
         // ページによって項目数が違うためクランプ
-        const maxIndex = this.commandTexts.length - 1;
+        const maxIndex = this.commandTexts.filter(t => t instanceof Phaser.GameObjects.Text).length - 1;
         if (this.selectedCommand > maxIndex) this.selectedCommand = maxIndex;
 
-        this.cursor.setY(startY + this.selectedCommand * lineHeight);
+        // カーソル (指アイコン)
+        this.cursor.setX(cmdX + 10);
+        this.cursor.setY(cmdY + 20 + this.selectedCommand * lineHeight);
+        this.cursor.setDepth(201);
+        this.cursor.setText('☛'); // SFC風の手の形
     }
 
     /**
@@ -783,7 +791,22 @@ export class BattleScene extends Phaser.Scene {
      * コマンドの表示/非表示
      */
     private setCommandVisible(visible: boolean): void {
-        this.commandTexts.forEach(text => text.setVisible(visible));
+        this.commandTexts.forEach(obj => {
+            // TextかGraphics(背景)の可能性がある
+            obj.setVisible(visible);
+        });
+
+        if (!visible) {
+            // 非表示時は背景を消すなどのクリーンアップが必要だが
+            // updateCommandWindowで毎回作り直す方式にしたので、ここではVisible制御のみ
+            // 完全に消す場合は destroy だが、再表示もあるのでVisible
+
+        } else {
+            // 表示時は背景が必要なら再作成？
+            // updateCommandWindowを呼ぶのが確実
+            this.updateCommandWindow();
+        }
+
         this.cursor.setVisible(visible);
     }
 
@@ -1322,10 +1345,11 @@ export class BattleScene extends Phaser.Scene {
         const statusX = 230;
 
         // テキスト更新（FF6風：HP数値のみ）- 各メンバーのHPを更新
-        // テキスト更新 (Current/Max HP)
+        // テキスト更新 (Current/Max HP) Suffix space padding for alignment
         for (let i = 0; i < this.partyCount; i++) {
             const member = this.partyMembers[i];
-            this.partyHpTexts[i].setText(`${Math.max(0, member.hp)}/${member.maxHp}`);
+            const hpStr = `${member.hp}`.padStart(4, ' ') + '/' + `${member.maxHp}`.padStart(4, ' ');
+            this.partyHpTexts[i].setText(hpStr);
         }
 
         // HPバー更新は不要（ATBバーのみ使用）
