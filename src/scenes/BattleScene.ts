@@ -9,7 +9,7 @@ import { GameStateManager } from '@/managers/GameStateManager';
 import { WeaknessType } from '@/types';
 
 /** バトルコマンド */
-type BattleCommand = 'attack' | 'defend' | 'escape';
+type BattleCommand = 'attack' | 'defend' | 'escape' | 'skill' | 'item';
 
 /** バトルステート */
 type BattleState = 'start' | 'playerTurn' | 'enemyTurn' | 'victory' | 'defeat' | 'escaped' | 'waiting' | 'executing';
@@ -146,10 +146,12 @@ export class BattleScene extends Phaser.Scene {
     // バトル状態
     private battleState: BattleState = 'start';
     private selectedCommand: number = 0;
-    private commands: BattleCommand[] = ['attack', 'defend', 'escape'];
+    private commandPage: 'main' | 'defend' | 'escape' = 'main'; // コマンドページ
+    private commands: BattleCommand[] = ['attack', 'skill', 'item']; // メインコマンド
 
     // UI要素
     private commandTexts: Phaser.GameObjects.Text[] = [];
+    private enemyNameTexts: Phaser.GameObjects.Text[] = []; // 敵名リスト
     private messageText!: Phaser.GameObjects.Text;
     private playerHpText!: Phaser.GameObjects.Text;
     private enemyHpText!: Phaser.GameObjects.Text;
@@ -498,56 +500,33 @@ export class BattleScene extends Phaser.Scene {
      * - 左下: 敵名 + コマンドメニュー
      * - 右: パーティ4人分のステータス
      */
+    /**
+     * UIを作成（FF6風レイアウト: 3ウィンドウ）
+     * - 左: コマンドメニュー
+     * - 中央: 敵名リスト
+     * - 右: パーティステータス
+     */
     private createUI(): void {
-        const uiY = GAME_HEIGHT - 180;  // UI開始Y位置（解像度2倍）
+        const uiY = GAME_HEIGHT - 180;  // UI開始Y位置
+        const windowHeight = 170;
 
-        // ===== 左側：敵名 + コマンドメニュー =====
-        // 敵名ウィンドウ
-        const enemyNameBg = this.add.graphics();
-        enemyNameBg.fillStyle(0x000044, 0.9);
-        enemyNameBg.fillRect(10, uiY, 200, 44);
-        enemyNameBg.lineStyle(3, 0x4444aa, 1);
-        enemyNameBg.strokeRect(10, uiY, 200, 44);
+        // Window 1: コマンド (左 25%)
+        const cmdX = 10;
+        const cmdWidth = 110;
 
-        // 敵名テキスト
-        this.enemyHpText = this.add.text(
-            20,
-            uiY + 8,
-            this.enemy.name,
-            {
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: '16px',
-                color: '#ffffff'
-            }
-        );
+        const cmdBg = this.add.graphics();
+        cmdBg.fillStyle(0x000044, 0.9);
+        cmdBg.fillRect(cmdX, uiY, cmdWidth, windowHeight);
+        cmdBg.lineStyle(3, 0x4444aa, 1);
+        cmdBg.strokeRect(cmdX, uiY, cmdWidth, windowHeight);
 
-        // コマンドウィンドウの背景
-        const commandBg = this.add.graphics();
-        commandBg.fillStyle(0x000044, 0.9);
-        commandBg.fillRect(10, uiY + 50, 200, 120);
-        commandBg.lineStyle(3, 0x4444aa, 1);
-        commandBg.strokeRect(10, uiY + 50, 200, 120);
-
-        // コマンドテキスト
-        const commandLabels = ['たたかう', 'ぼうぎょ', 'にげる'];
-        commandLabels.forEach((label, index) => {
-            const text = this.add.text(
-                60,
-                uiY + 64 + index * 36,
-                label,
-                {
-                    fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '16px',
-                    color: '#ffffff'
-                }
-            );
-            this.commandTexts.push(text);
-        });
+        // コマンドテキスト（初期作成）
+        this.updateCommandWindow();
 
         // カーソル
         this.cursor = this.add.text(
-            30,
-            uiY + 64,
+            cmdX + 15,
+            uiY + 20,
             '▶',
             {
                 fontFamily: '"Press Start 2P", monospace',
@@ -556,31 +535,53 @@ export class BattleScene extends Phaser.Scene {
             }
         );
 
-        // ===== 右側：パーティ4人分のステータス =====
-        const statusX = 230;
-        const statusWidth = GAME_WIDTH - 240;
-        const memberHeight = 40;  // 各メンバーの高さ（解像度2倍）
+        // Window 2: 敵名 (中央 25%)
+        const enemyX = cmdX + cmdWidth + 10;
+        const enemyWidth = 110;
+
+        const enemyBg = this.add.graphics();
+        enemyBg.fillStyle(0x000044, 0.9);
+        enemyBg.fillRect(enemyX, uiY, enemyWidth, windowHeight);
+        enemyBg.lineStyle(3, 0x4444aa, 1);
+        enemyBg.strokeRect(enemyX, uiY, enemyWidth, windowHeight);
+
+        // 敵名表示（現在は1体のみ）
+        const enemyNameText = this.add.text(
+            enemyX + 15,
+            uiY + 20,
+            this.enemy.name,
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '14px',
+                color: '#ffffff'
+            }
+        );
+        this.enemyNameTexts.push(enemyNameText);
+
+        // Window 3: パーティステータス (右 50%)
+        const statusX = enemyX + enemyWidth + 10;
+        const statusWidth = GAME_WIDTH - statusX - 10;
 
         const statusBg = this.add.graphics();
         statusBg.fillStyle(0x000044, 0.9);
-        statusBg.fillRect(statusX, uiY, statusWidth, 170);
+        statusBg.fillRect(statusX, uiY, statusWidth, windowHeight);
         statusBg.lineStyle(3, 0x4444aa, 1);
-        statusBg.strokeRect(statusX, uiY, statusWidth, 170);
+        statusBg.strokeRect(statusX, uiY, statusWidth, windowHeight);
 
         // 4人分のステータスを表示
         this.partyHpTexts = [];
         this.partyAtbBars = [];
+        const memberHeight = 40;
 
         for (let i = 0; i < this.partyCount; i++) {
             const member = this.partyMembers[i];
             const rowY = uiY + 10 + (i * memberHeight);
 
-            // メンバー名（武器種アイコン付き）
-            const weaponIcon = this.getWeaknessIcon(member.weaponType);
+            // メンバー名
             this.add.text(
                 statusX + 10,
                 rowY,
-                `[${weaponIcon}]${member.name}`,
+                member.name,
                 {
                     fontFamily: '"Press Start 2P", monospace',
                     fontSize: '14px',
@@ -588,44 +589,40 @@ export class BattleScene extends Phaser.Scene {
                 }
             );
 
-            // HP数値
+            // HP数値 (Current / Max)
             const hpText = this.add.text(
-                statusX + 260,
+                statusX + 180,
                 rowY,
-                `${member.hp}`,
+                `${Math.max(0, member.hp)}/${member.maxHp}`,
                 {
                     fontFamily: '"Press Start 2P", monospace',
                     fontSize: '14px',
-                    color: '#4ade80'
+                    color: '#ffffff'
                 }
             );
-            hpText.setOrigin(1, 0);
+            hpText.setOrigin(1, 0); // 右寄せ
             this.partyHpTexts.push(hpText);
 
             // ATBゲージ背景
+            const atbX = statusX + 190;
+            const atbWidth = statusWidth - 200;
             const barBg = this.add.graphics();
             barBg.fillStyle(0x333333, 1);
-            barBg.fillRect(statusX + 270, rowY + 4, 160, 20);
+            barBg.fillRect(atbX, rowY + 4, atbWidth, 20);
 
-            // ATBゲージ（緑色で現在値を表示）
+            // ATBゲージ
             const atbBar = this.add.graphics();
-            this.drawAtbBar(atbBar, statusX + 270, rowY + 4, 160, 20, member.atb, member.maxAtb);
+            this.drawAtbBar(atbBar, atbX, rowY + 4, atbWidth, 20, member.atb, member.maxAtb);
             this.partyAtbBars.push(atbBar);
         }
 
-        // 1人目をメイン用として設定
+        // 互換性のため
         this.playerHpText = this.partyHpTexts[0];
-        this.playerHpBar = this.partyAtbBars[0];
 
-        // 敵HPバー（非表示だが内部で使用）
-        this.enemyHpBarBg = this.add.graphics();
-        this.enemyHpBar = this.add.graphics();
-        this.playerHpBarBg = this.add.graphics();
-
-        // メッセージテキスト（ステータスウィンドウ外、上部）
+        // メッセージテキスト（上部）
         this.messageText = this.add.text(
-            statusX + 10,
-            uiY - 40,
+            GAME_WIDTH / 2,
+            120,
             '',
             {
                 fontFamily: '"Press Start 2P", monospace',
@@ -635,23 +632,80 @@ export class BattleScene extends Phaser.Scene {
                 padding: { x: 10, y: 6 }
             }
         );
+        this.messageText.setOrigin(0.5);
+        this.messageText.setScrollFactor(0);
+        this.messageText.setDepth(1000);
 
         // 初期状態ではコマンドを非表示
         this.setCommandVisible(false);
 
-        // ターン数表示（左上）
-        this.turnText = this.add.text(
-            16,
-            16,
-            `TURN: ${this.turnCount}`,
-            {
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: '16px',
-                color: '#ffffff',
-                stroke: '#000000',
-                strokeThickness: 4
+        // ターン数表示
+        this.turnText = this.add.text(16, 16, `TURN: ${this.turnCount}`, {
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: '16px',
+            color: '#ffffff'
+        });
+    }
+
+    /**
+     * コマンドウィンドウの内容を更新
+     */
+    private updateCommandWindow(): void {
+        // 既存のテキストをクリア
+        this.commandTexts.forEach(t => t.destroy());
+        this.commandTexts = [];
+
+        const uiY = GAME_HEIGHT - 180;
+        const startX = 40;
+        const startY = uiY + 20;
+        const lineHeight = 36;
+
+        let commandsToShow: string[] = [];
+
+        if (this.commandPage === 'main') {
+            // アクティブメンバーの固有技名を取得
+            let skillName = 'とくぎ';
+            if (this.activePartyMemberIndex >= 0) {
+                const member = this.partyMembers[this.activePartyMemberIndex];
+                // 型定義に追加済みの specialCommandName を使用
+                // @ts-ignore: 一時的に型エラー回避（前のステップで追加済みだが反映待ちの可能性）
+                skillName = member.specialCommandName || 'とくぎ';
             }
-        );
+            commandsToShow = ['たたかう', skillName, 'アイテム'];
+        } else if (this.commandPage === 'defend') {
+            commandsToShow = ['ぼうぎょ'];
+        } else if (this.commandPage === 'escape') {
+            commandsToShow = ['にげる'];
+        }
+
+        commandsToShow.forEach((label, index) => {
+            const text = this.add.text(
+                startX,
+                startY + index * lineHeight,
+                label,
+                {
+                    fontFamily: '"Press Start 2P", monospace',
+                    fontSize: '16px',
+                    color: '#ffffff'
+                }
+            );
+            this.commandTexts.push(text);
+        });
+    }
+
+    /**
+     * コマンドカーソル位置更新
+     */
+    private updateCursorPosition(): void {
+        const uiY = GAME_HEIGHT - 180;
+        const startY = uiY + 20;
+        const lineHeight = 36;
+
+        // ページによって項目数が違うためクランプ
+        const maxIndex = this.commandTexts.length - 1;
+        if (this.selectedCommand > maxIndex) this.selectedCommand = maxIndex;
+
+        this.cursor.setY(startY + this.selectedCommand * lineHeight);
     }
 
     /**
@@ -741,9 +795,42 @@ export class BattleScene extends Phaser.Scene {
         this.input.keyboard?.on('keydown-DOWN', () => this.moveCommand(1));
         this.input.keyboard?.on('keydown-W', () => this.moveCommand(-1));
         this.input.keyboard?.on('keydown-S', () => this.moveCommand(1));
+
+        // 左右でページ切り替え
+        this.input.keyboard?.on('keydown-LEFT', () => this.switchCommandPage('left'));
+        this.input.keyboard?.on('keydown-RIGHT', () => this.switchCommandPage('right'));
+        this.input.keyboard?.on('keydown-A', () => this.switchCommandPage('left'));
+        this.input.keyboard?.on('keydown-D', () => this.switchCommandPage('right'));
+
         this.input.keyboard?.on('keydown-SPACE', () => this.selectCommand());
         this.input.keyboard?.on('keydown-ENTER', () => this.selectCommand());
         this.input.keyboard?.on('keydown-Z', () => this.selectCommand());
+    }
+
+    private switchCommandPage(direction: 'left' | 'right'): void {
+        if (this.battleState !== 'playerTurn') return;
+
+        if (direction === 'right') {
+            if (this.commandPage === 'main') {
+                this.commandPage = 'defend';
+            } else if (this.commandPage === 'defend') {
+                return; // 右端
+            } else if (this.commandPage === 'escape') {
+                this.commandPage = 'main';
+            }
+        } else { // left
+            if (this.commandPage === 'main') {
+                this.commandPage = 'escape';
+            } else if (this.commandPage === 'escape') {
+                return; // 左端
+            } else if (this.commandPage === 'defend') {
+                this.commandPage = 'main';
+            }
+        }
+
+        this.selectedCommand = 0;
+        this.updateCommandWindow();
+        this.updateCursorPosition();
     }
 
     /**
@@ -754,15 +841,15 @@ export class BattleScene extends Phaser.Scene {
 
         this.selectedCommand += direction;
 
+        // ページ項目数による循環
+        const max = this.commandTexts.length;
         if (this.selectedCommand < 0) {
-            this.selectedCommand = this.commands.length - 1;
-        } else if (this.selectedCommand >= this.commands.length) {
+            this.selectedCommand = max - 1;
+        } else if (this.selectedCommand >= max) {
             this.selectedCommand = 0;
         }
 
-        // FF6風UIのカーソル位置（解像度2倍）
-        const uiY = GAME_HEIGHT - 180;
-        this.cursor.setY(uiY + 64 + this.selectedCommand * 36);
+        this.updateCursorPosition();
     }
 
     /**
@@ -771,7 +858,18 @@ export class BattleScene extends Phaser.Scene {
     private selectCommand(): void {
         if (this.battleState !== 'playerTurn') return;
 
-        const command = this.commands[this.selectedCommand];
+        let command: BattleCommand | null = null;
+
+        if (this.commandPage === 'main') {
+            command = this.commands[this.selectedCommand];
+        } else if (this.commandPage === 'defend') {
+            command = 'defend';
+        } else if (this.commandPage === 'escape') {
+            command = 'escape';
+        }
+
+        if (!command) return;
+
         this.setCommandVisible(false);
 
         // 即座に行動実行中状態へ移行（連打防止）
@@ -780,6 +878,22 @@ export class BattleScene extends Phaser.Scene {
         switch (command) {
             case 'attack':
                 this.playerAttackAction();
+                break;
+            case 'skill':
+                // TODO: スキル実装
+                this.showMessage('スキルはまだ使えない！');
+                this.time.delayedCall(1000, () => {
+                    this.battleState = 'waiting'; // 実行終了として扱う
+                    this.showMessage('');
+                });
+                break;
+            case 'item':
+                // TODO: アイテム実装
+                this.showMessage('アイテムをもっていない！');
+                this.time.delayedCall(1000, () => {
+                    this.battleState = 'waiting';
+                    this.showMessage('');
+                });
                 break;
             case 'defend':
                 this.playerDefendAction();
@@ -831,12 +945,14 @@ export class BattleScene extends Phaser.Scene {
         // アクティブメンバーの防御フラグをリセット
         const activeMember = this.partyMembers[this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0];
         activeMember.isDefending = false;
+        // アクティブメンバーの固有技名を取得してコマンドウィンドウ更新
+        this.commandPage = 'main'; // ターン開始時は必ずメイン
+        this.updateCommandWindow();
+
         this.showMessage(`${activeMember.name}のターン！`);
         this.setCommandVisible(true);
         this.selectedCommand = 0;
-        // FF6風UIのカーソル位置（解像度2倍）
-        const uiY = GAME_HEIGHT - 180;
-        this.cursor.setY(uiY + 64);
+        this.updateCursorPosition();
     }
 
     /**
@@ -1206,9 +1322,10 @@ export class BattleScene extends Phaser.Scene {
         const statusX = 230;
 
         // テキスト更新（FF6風：HP数値のみ）- 各メンバーのHPを更新
+        // テキスト更新 (Current/Max HP)
         for (let i = 0; i < this.partyCount; i++) {
             const member = this.partyMembers[i];
-            this.partyHpTexts[i].setText(`${Math.max(0, member.hp)}`);
+            this.partyHpTexts[i].setText(`${Math.max(0, member.hp)}/${member.maxHp}`);
         }
 
         // HPバー更新は不要（ATBバーのみ使用）

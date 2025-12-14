@@ -5,9 +5,10 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
     torikun: {
         id: 'torikun',
         name: 'とりくん',
-        spriteKey: 'player', // マップ用
-        battleSpriteKey: 'player-battle', // バトル用
+        spriteKey: 'player',
+        battleSpriteKey: 'player-battle',
         defaultWeapon: 'sword',
+        specialCommandName: 'ぜんりょく',
         initialStats: {
             hp: 100,
             maxHp: 100,
@@ -23,9 +24,10 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
     daichan: {
         id: 'daichan',
         name: 'だいちゃん',
-        spriteKey: 'player', // TODO: 専用マップスプライト
+        spriteKey: 'player',
         battleSpriteKey: 'daichan-battle',
         defaultWeapon: 'axe',
+        specialCommandName: 'たたきわる',
         initialStats: {
             hp: 80,
             maxHp: 80,
@@ -41,9 +43,10 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
     shinichi: {
         id: 'shinichi',
         name: 'しんいち',
-        spriteKey: 'player', // TODO: 専用マップスプライト
+        spriteKey: 'player',
         battleSpriteKey: 'shinichi-battle',
         defaultWeapon: 'bow',
+        specialCommandName: 'ねらう',
         initialStats: {
             hp: 90,
             maxHp: 90,
@@ -59,9 +62,10 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
     taisa: {
         id: 'taisa',
         name: 'たいさ',
-        spriteKey: 'player', // TODO: 専用マップスプライト
+        spriteKey: 'player',
         battleSpriteKey: 'taisa-battle',
         defaultWeapon: 'staff',
+        specialCommandName: 'いのる',
         initialStats: {
             hp: 120,
             maxHp: 120,

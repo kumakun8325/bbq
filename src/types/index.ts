@@ -32,6 +32,7 @@ export interface CharacterDefinition {
     spriteKey: string;
     battleSpriteKey: string;
     defaultWeapon: WeaknessType;
+    specialCommandName: string; // 固有技名
 }
 
 /** キャラクターインスタンス（可変データ） */
