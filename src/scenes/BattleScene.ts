@@ -1145,17 +1145,25 @@ export class BattleScene extends Phaser.Scene {
         this.targetFingerCursor.setVisible(true);
       }
     } else if (this.targetScope === 'all_allies') {
-      // 味方全体の場合は最初のキャラの左側に右向き手カーソルを表示
-      const firstSprite = this.partySprites[0];
-      if (firstSprite) {
-        this.targetFingerCursor.setTexture('hand-cursor');
-        this.targetFingerCursor.setFlipX(false);
-        this.targetFingerCursor.setOrigin(1, 0.5);
-        this.targetFingerCursor.setPosition(
-          firstSprite.x - firstSprite.width / 2 - 5,
-          firstSprite.y - firstSprite.height / 2
-        );
-        this.targetFingerCursor.setVisible(true);
+      // 味方全体の場合は全員のキャラの左側に矢印を表示
+      this.targetFingerCursor.setVisible(false); // メインカーソルは非表示
+
+      // 生存している全パーティメンバーに矢印を表示
+      for (let i = 0; i < this.partySprites.length; i++) {
+        const sprite = this.partySprites[i];
+        const member = this.partyMembers[i];
+        if (sprite && member && member.hp > 0 && this.readyArrows[i]) {
+          // readyArrows を一時的にターゲットカーソルとして使用
+          this.readyArrows[i].setTexture('hand-cursor');
+          this.readyArrows[i].setFlipX(false);
+          this.readyArrows[i].setOrigin(1, 0.5);
+          this.readyArrows[i].setPosition(
+            sprite.x - sprite.width / 2 - 5,
+            sprite.y - sprite.height / 2
+          );
+          this.readyArrows[i].setVisible(true);
+          this.readyArrows[i].setScale(2);
+        }
       }
     }
   }
@@ -1165,6 +1173,15 @@ export class BattleScene extends Phaser.Scene {
    */
   private hideTargetCursor(): void {
     this.targetFingerCursor.setVisible(false);
+
+    // all_allies用に表示していた矢印も非表示に（元のテクスチャに戻す）
+    for (let i = 0; i < this.readyArrows.length; i++) {
+      if (this.readyArrows[i]) {
+        this.readyArrows[i].setTexture('atb-ready-arrow');
+        this.readyArrows[i].setScale(3);
+        this.readyArrows[i].setVisible(false);
+      }
+    }
   }
 
   /**
@@ -1664,18 +1681,23 @@ export class BattleScene extends Phaser.Scene {
     // HP/MP テキスト更新
     for (let i = 0; i < this.partyCount; i++) {
       const member = this.partyMembers[i];
+      if (!member) continue;
 
       // HP更新
-      const hpStr =
-        `${member.hp}`.padStart(4, " ") +
-        "/" +
-        `${member.maxHp}`.padStart(4, " ");
-      this.partyHpTexts[i].setText(hpStr);
+      const hpText = this.partyHpTexts[i];
+      if (hpText && hpText.active) {
+        const hpStr =
+          `${member.hp}`.padStart(4, " ") +
+          "/" +
+          `${member.maxHp}`.padStart(4, " ");
+        hpText.setText(hpStr);
+      }
 
       // MP更新
-      const mpStr = `${member.mp}/${member.maxMp}`;
-      if (this.partyMpTexts[i]) {
-        this.partyMpTexts[i].setText(mpStr);
+      const mpText = this.partyMpTexts[i];
+      if (mpText && mpText.active) {
+        const mpStr = `${member.mp}/${member.maxMp}`;
+        mpText.setText(mpStr);
       }
     }
   }
@@ -2200,9 +2222,12 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    // パーティメンバーでATBが満タンのキャラがいればプレイヤーターン
+    // パーティメンバーでATBが満タンで、かつ今ターン未行動のキャラがいればプレイヤーターン
     const readyMemberIndex = this.partyMembers.findIndex(
-      (m, i) => m.hp > 0 && m.atb >= m.maxAtb,
+      (m, i) =>
+        m.hp > 0 &&
+        m.atb >= m.maxAtb &&
+        !this.actedPartyMemberIndices.has(i), // 今ターン未行動のみ
     );
 
     if (readyMemberIndex >= 0) {
