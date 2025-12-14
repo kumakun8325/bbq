@@ -527,7 +527,7 @@ atbRecoveryPerFrame = (baseSpeed + characterSpeed) * speedModifier;
 #### ブレイク時のビジュアル演出
 
 ```
-1. シールドが砕けるエフェクト（未実装）
+1. シールドが砕けるエフェクト
 2. 敵が揺れる＆色が暗くなる
 3. 「BREAK!」のテキスト表示
 4. 敵の頭上に「ピヨり星（★）」アニメーション表示

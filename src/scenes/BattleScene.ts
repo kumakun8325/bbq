@@ -1314,6 +1314,9 @@ export class BattleScene extends Phaser.Scene {
             }
         });
 
+        // シールド破壊エフェクト
+        this.playShieldBreakEffect();
+
         // 画面揺れ（激しく）
         this.cameras.main.shake(500, 0.03);
 
@@ -1343,6 +1346,73 @@ export class BattleScene extends Phaser.Scene {
         } else {
             this.stunTween.pause();
         }
+    }
+
+    /**
+     * シールド破壊エフェクト（破片が飛び散る）
+     */
+    private playShieldBreakEffect(): void {
+        const x = this.enemySprite.x;
+        const y = this.enemySprite.y;
+
+        // 10個の破片を生成
+        for (let i = 0; i < 10; i++) {
+            const angle = Phaser.Math.Between(0, 360);
+            const speed = Phaser.Math.Between(50, 150);
+            const rotation = Phaser.Math.Between(0, 360);
+
+            // 破片の形状（三角形）
+            const shard = this.add.graphics();
+            shard.fillStyle(0x60a5fa, 1); // シールド色（青）
+
+            // ランダムな形状の三角形
+            const p1 = { x: Phaser.Math.Between(-8, 8), y: Phaser.Math.Between(-8, 8) };
+            const p2 = { x: Phaser.Math.Between(-8, 8), y: Phaser.Math.Between(-8, 8) };
+            const p3 = { x: Phaser.Math.Between(-8, 8), y: Phaser.Math.Between(-8, 8) };
+
+            shard.fillTriangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+            shard.x = x;
+            shard.y = y;
+            shard.setDepth(150);
+
+            // 飛び散るアニメーション
+            const rad = Phaser.Math.DegToRad(angle);
+            const targetX = x + Math.cos(rad) * speed;
+            const targetY = y + Math.sin(rad) * speed;
+
+            this.tweens.add({
+                targets: shard,
+                x: targetX,
+                y: targetY,
+                angle: rotation + 180, // 回転しながら飛ぶ
+                alpha: 0,
+                duration: 600,
+                ease: 'Cubic.out',
+                onComplete: () => {
+                    shard.destroy();
+                }
+            });
+        }
+
+        // 破裂音風のフラッシュリング
+        const ring = this.add.graphics();
+        ring.lineStyle(4, 0xffffff, 1);
+        ring.strokeCircle(0, 0, 20);
+        ring.x = x;
+        ring.y = y;
+        ring.setDepth(149);
+
+        this.tweens.add({
+            targets: ring,
+            scaleX: 3,
+            scaleY: 3,
+            alpha: 0,
+            duration: 400,
+            ease: 'Quad.out',
+            onComplete: () => {
+                ring.destroy();
+            }
+        });
     }
 
     /**
