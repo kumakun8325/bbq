@@ -12,7 +12,7 @@ import { WeaknessType } from '@/types';
 type BattleCommand = 'attack' | 'defend' | 'escape';
 
 /** バトルステート */
-type BattleState = 'start' | 'playerTurn' | 'enemyTurn' | 'victory' | 'defeat' | 'escaped' | 'waiting';
+type BattleState = 'start' | 'playerTurn' | 'enemyTurn' | 'victory' | 'defeat' | 'escaped' | 'waiting' | 'executing';
 
 /** 弱点属性タイプ */
 
@@ -774,6 +774,9 @@ export class BattleScene extends Phaser.Scene {
         const command = this.commands[this.selectedCommand];
         this.setCommandVisible(false);
 
+        // 即座に行動実行中状態へ移行（連打防止）
+        this.battleState = 'executing';
+
         switch (command) {
             case 'attack':
                 this.playerAttackAction();
@@ -1457,8 +1460,8 @@ export class BattleScene extends Phaser.Scene {
             return;
         }
 
-        // ウェイトモード: プレイヤーターン中はATB停止（設計書3.5.4）
-        if (this.battleState === 'playerTurn') {
+        // ウェイトモード: プレイヤーターン中またはアクション実行中はATB停止
+        if (this.battleState === 'playerTurn' || this.battleState === 'executing') {
             return;
         }
 
