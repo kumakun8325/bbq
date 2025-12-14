@@ -50,15 +50,16 @@ interface EnemyData {
     weaknesses: WeaknessType[];  // 弱点リスト
     revealedWeaknesses: boolean[]; // 発見済みフラグ
     isBroken: boolean;           // ブレイク状態かどうか
+    turnsSkipped: number;        // ブレイク中にスキップしたターン数
 }
 
 /** 敵データベース */
 const ENEMY_DATABASE: Record<string, EnemyData> = {
     slime: {
         name: 'スライム',
-        hp: 30,
-        maxHp: 30,
-        attack: 5,
+        hp: 120,
+        maxHp: 120,
+        attack: 10,
         defense: 2,
         speed: 20,           // 低速な敵
         atb: 0,
@@ -67,17 +68,18 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         width: 32,
         height: 32,
         spriteKey: 'enemy-slime',
-        shield: 2,
-        maxShield: 2,
+        shield: 4,
+        maxShield: 4,
         weaknesses: ['sword', 'fire'],
         revealedWeaknesses: [false, false],
-        isBroken: false
+        isBroken: false,
+        turnsSkipped: 0
     },
     bat: {
         name: 'コウモリ',
-        hp: 20,
-        maxHp: 20,
-        attack: 8,
+        hp: 80,
+        maxHp: 80,
+        attack: 15,
         defense: 1,
         speed: 60,           // 素早い敵
         atb: 0,
@@ -86,18 +88,19 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         width: 32,
         height: 32,
         spriteKey: 'enemy-bat',
-        shield: 1,
-        maxShield: 1,
+        shield: 3,
+        maxShield: 3,
         weaknesses: ['bow', 'wind'],
         revealedWeaknesses: [false, false],
-        isBroken: false
+        isBroken: false,
+        turnsSkipped: 0
     },
     goblin: {
         name: 'ゴブリン',
-        hp: 40,
-        maxHp: 40,
-        attack: 10,
-        defense: 3,
+        hp: 150,
+        maxHp: 150,
+        attack: 20,
+        defense: 5,
         speed: 35,           // 中速な敵
         atb: 0,
         maxAtb: 100,
@@ -105,11 +108,12 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         width: 32,
         height: 32,
         spriteKey: 'enemy-goblin',
-        shield: 3,
-        maxShield: 3,
+        shield: 5,
+        maxShield: 5,
         weaknesses: ['sword', 'spear', 'fire'],
         revealedWeaknesses: [false, false, false],
-        isBroken: false
+        isBroken: false,
+        turnsSkipped: 0
     }
 };
 
@@ -160,6 +164,8 @@ export class BattleScene extends Phaser.Scene {
     private enemyShieldText!: Phaser.GameObjects.Text;
     private enemyWeaknessText!: Phaser.GameObjects.Text;
     private breakText!: Phaser.GameObjects.Text;
+    private stunStars: Phaser.GameObjects.Text[] = []; // ピヨり星
+    private stunTween!: Phaser.Tweens.Tween;
 
     // HPバー（後方互換性のため残す）
     private playerHpBar!: Phaser.GameObjects.Graphics;
@@ -325,7 +331,57 @@ export class BattleScene extends Phaser.Scene {
         this.breakText.setVisible(false);
         this.breakText.setDepth(200);
 
+        // ピヨり星（スタン表現）を作成
+        this.createStunStars();
+
         this.updateEnemyStatusDisplay();
+    }
+
+    /**
+     * ピヨり星（スタン表現）を作成
+     */
+    private createStunStars(): void {
+        const centerX = this.enemySprite.x;
+        const centerY = this.enemySprite.y - 40; // 頭上
+
+        // 3つの星を作成
+        for (let i = 0; i < 3; i++) {
+            const star = this.add.text(centerX, centerY, '★', {
+                fontSize: '24px',
+                color: '#fbbf24',
+                stroke: '#000000',
+                strokeThickness: 2
+            });
+            star.setOrigin(0.5);
+            star.setVisible(false);
+            star.setDepth(150);
+            this.stunStars.push(star);
+        }
+
+        // 星が回るアニメーション（常に実行し、visibleで制御）
+        this.stunTween = this.tweens.addCounter({
+            from: 0,
+            to: 360,
+            duration: 2000,
+            repeat: -1,
+            onUpdate: (tween) => {
+                const angle = tween.getValue() || 0;
+                const radius = 30; // 半径
+
+                this.stunStars.forEach((star, index) => {
+                    // 120度ずらす
+                    const starAngle = angle + (index * 120);
+                    const rad = Phaser.Math.DegToRad(starAngle);
+
+                    star.x = this.enemySprite.x + Math.cos(rad) * radius;
+                    star.y = (this.enemySprite.y - 40) + Math.sin(rad) * (radius * 0.3); // 楕円軌道
+                    star.setAlpha(0.7 + Math.sin(rad) * 0.3); // 奥に行くと少し薄く
+                });
+            }
+        });
+
+        // 初期状態は停止・非表示
+        this.stunTween.pause();
     }
 
     /**
@@ -751,6 +807,7 @@ export class BattleScene extends Phaser.Scene {
                 // ブレイク判定
                 if (this.enemy.shield === 0) {
                     this.enemy.isBroken = true;
+                    this.enemy.turnsSkipped = 0; // スキップカウンタリセット
                     isShieldBrokenNow = true;
                 }
             }
@@ -892,14 +949,22 @@ export class BattleScene extends Phaser.Scene {
 
         // ブレイク状態からの回復チェック
         if (this.enemy.isBroken) {
-            this.enemy.isBroken = false;
-            this.enemy.shield = this.enemy.maxShield; // シールド前回覆
-            this.updateEnemyStatusDisplay();
-            this.enemySprite.clearTint(); // 色を戻す
+            // 既に1ターン以上スキップしている場合のみ回復（最低1回は行動不能）
+            if (this.enemy.turnsSkipped >= 1) {
+                this.enemy.isBroken = false;
+                this.enemy.shield = this.enemy.maxShield; // シールド全回復
+                this.updateEnemyStatusDisplay();
+                this.enemySprite.clearTint(); // 色を戻す
+                this.setStunStarsVisible(false); // 星を消す
 
-            this.showMessage(`${this.enemy.name}は たい勢をたてなおした！`);
+                this.showMessage(`${this.enemy.name}は たい勢をたてなおした！`);
+            } else {
+                // スキップカウントを増やして行動パス
+                this.enemy.turnsSkipped++;
+                this.showMessage(`${this.enemy.name}は 気絶している...`);
+            }
 
-            // 行動スキップ
+            // 行動スキップ（回復時も行動はできない）
             this.time.delayedCall(2000, () => {
                 this.battleState = 'waiting';
                 this.showMessage('');
@@ -1203,6 +1268,21 @@ export class BattleScene extends Phaser.Scene {
 
         // 敵の色を暗くする（スタン表現）
         this.enemySprite.setTint(0x888888);
+
+        // ピヨり星を表示
+        this.setStunStarsVisible(true);
+    }
+
+    /**
+     * ピヨり星の表示切り替え
+     */
+    private setStunStarsVisible(visible: boolean): void {
+        this.stunStars.forEach(star => star.setVisible(visible));
+        if (visible) {
+            this.stunTween.resume();
+        } else {
+            this.stunTween.pause();
+        }
     }
 
     /**
