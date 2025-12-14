@@ -165,7 +165,12 @@ export class BattleScene extends Phaser.Scene {
     private enemyWeaknessText!: Phaser.GameObjects.Text;
     private breakText!: Phaser.GameObjects.Text;
     private stunStars: Phaser.GameObjects.Text[] = []; // ピヨり星
+
     private stunTween!: Phaser.Tweens.Tween;
+
+    // ターン数表示
+    private turnCount: number = 0;
+    private turnText!: Phaser.GameObjects.Text;
 
     // HPバー（後方互換性のため残す）
     private playerHpBar!: Phaser.GameObjects.Graphics;
@@ -194,6 +199,9 @@ export class BattleScene extends Phaser.Scene {
             member.isDefending = false;
         }
         this.enemy.atb = Phaser.Math.Between(30, 70);
+
+        // ターン数リセット
+        this.turnCount = 1;
     }
 
     create(): void {
@@ -613,6 +621,20 @@ export class BattleScene extends Phaser.Scene {
 
         // 初期状態ではコマンドを非表示
         this.setCommandVisible(false);
+
+        // ターン数表示（左上）
+        this.turnText = this.add.text(
+            16,
+            16,
+            `TURN: ${this.turnCount}`,
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '16px',
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 4
+            }
+        );
     }
 
     /**
@@ -753,6 +775,11 @@ export class BattleScene extends Phaser.Scene {
      */
     private startPlayerTurn(): void {
         this.battleState = 'playerTurn';
+
+        // ターン数更新
+        this.turnText.setText(`TURN: ${this.turnCount}`);
+        this.turnCount++;
+
         // アクティブメンバーの防御フラグをリセット
         const activeMember = this.partyMembers[this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0];
         activeMember.isDefending = false;
@@ -948,6 +975,10 @@ export class BattleScene extends Phaser.Scene {
     private startEnemyTurn(): void {
         this.battleState = 'enemyTurn';
 
+        // ターン数更新
+        this.turnText.setText(`TURN: ${this.turnCount}`);
+        this.turnCount++;
+
         // ブレイク状態からの回復チェック
         if (this.enemy.isBroken) {
             // 既に1ターン以上スキップしている場合のみ回復（最低1回は行動不能）
@@ -958,7 +989,9 @@ export class BattleScene extends Phaser.Scene {
                 this.enemySprite.clearTint(); // 色を戻す
                 this.setStunStarsVisible(false); // 星を消す
 
-                this.showMessage(`${this.enemy.name}は たい勢をたてなおした！`);
+                this.setStunStarsVisible(false); // 星を消す
+
+                this.showMessage(`${this.enemy.name}は 体勢を立て直した！`);
             } else {
                 // スキップカウントを増やして行動パス
                 this.enemy.turnsSkipped++;
