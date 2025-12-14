@@ -567,21 +567,23 @@ export class BattleScene extends Phaser.Scene {
             const atbX = startX + 380;
             const atbWidth = 120;
 
+            // 枠とゲージの位置調整（ズレ修正）
             // 枠
             const atbFrame = this.add.graphics();
             atbFrame.lineStyle(2, 0xaaaaaa, 1);
-            atbFrame.strokeRoundedRect(atbX, rowY + 4, atbWidth, 12, 6); // 丸みのある枠
+            atbFrame.strokeRoundedRect(atbX, rowY + 6, atbWidth, 12, 6); // 丸みのある枠
 
-            // ゲージ本体
+            // ゲージ本体（枠の内側に綺麗に収める）
+            // 枠線が2pxなので、x,yともに+2pxオフセットし、幅高さを-4pxする
             const atbBar = this.add.graphics();
-            this.drawAtbBar(atbBar, atbX + 2, rowY + 6, atbWidth - 4, 8, member.atb, member.maxAtb);
+            this.drawAtbBar(atbBar, atbX + 2, rowY + 8, atbWidth - 4, 8, member.atb, member.maxAtb);
             this.partyAtbBars.push(atbBar);
         }
 
         // 互換性のため
         this.playerHpText = this.partyHpTexts[0];
 
-        // メッセージテキスト（画面上部中央）
+        // このメッセージテキストは上部インフォメーション用のみに使用（ターン表示には使わない）
         this.messageText = this.add.text(
             GAME_WIDTH / 2,
             40,
@@ -590,16 +592,17 @@ export class BattleScene extends Phaser.Scene {
                 fontFamily: '"Press Start 2P", monospace',
                 fontSize: '18px',
                 color: '#ffffff',
-                backgroundColor: '#000044aa', // 半透明背景
+                backgroundColor: '#000044aa',
                 padding: { x: 20, y: 10 }
             }
         );
         this.messageText.setOrigin(0.5);
         this.messageText.setScrollFactor(0);
         this.messageText.setDepth(1000);
+        this.messageText.visible = false; // 初期非表示
 
-        // 枠線付きメッセージウィンドウ風にする
         this.messageText.setStroke('#aaaaaa', 2);
+
 
         // コマンドウィンドウ（初期は非表示のコンテナとして作成推奨だが、今回は既存ロジック流用で動的に描画）
         // createUIでは初期化のみ
@@ -639,8 +642,24 @@ export class BattleScene extends Phaser.Scene {
         // 簡易的にここで背景Graphicsも管理するか、固定位置ならcreateUIで作る
         // ご要望の動画を見ると、左下のステータスウィンドウの上に被さるようにコマンドウィンドウが出る
 
-        const cmdX = 20;
-        const cmdY = GAME_HEIGHT - 280; // ステータスウィンドウの上
+        // コマンドウィンドウ位置：アクティブキャラの頭上
+        // ポップアップ位置計算
+        let cmdX = 20;
+        let cmdY = GAME_HEIGHT - 280;
+
+        if (this.activePartyMemberIndex >= 0 && this.partySprites[this.activePartyMemberIndex]) {
+            const sprite = this.partySprites[this.activePartyMemberIndex];
+            // キャラクターの左上あたりにポップアップ
+            // スプライトはスケール4倍されているため考慮
+            cmdX = sprite.x - 100;
+            cmdY = sprite.y - 100;
+
+            // 画面外にはみ出ないように調整
+            if (cmdX < 10) cmdX = 10;
+            if (cmdY < 10) cmdY = 10;
+            if (cmdX + 160 > GAME_WIDTH) cmdX = GAME_WIDTH - 170;
+        }
+
         const cmdWidth = 160;
 
         // 背景（毎回クリアするのは非効率だが、簡略化のため）
@@ -701,8 +720,20 @@ export class BattleScene extends Phaser.Scene {
      * コマンドカーソル位置更新
      */
     private updateCursorPosition(): void {
-        const cmdX = 20;
-        const cmdY = GAME_HEIGHT - 280;
+        let cmdX = 20;
+        let cmdY = GAME_HEIGHT - 280;
+
+        // updateCommandWindowと同じロジックで位置を特定
+        if (this.activePartyMemberIndex >= 0 && this.partySprites[this.activePartyMemberIndex]) {
+            const sprite = this.partySprites[this.activePartyMemberIndex];
+            cmdX = sprite.x - 100;
+            cmdY = sprite.y - 100;
+
+            if (cmdX < 10) cmdX = 10;
+            if (cmdY < 10) cmdY = 10;
+            if (cmdX + 160 > GAME_WIDTH) cmdX = GAME_WIDTH - 170;
+        }
+
         const lineHeight = 36;
 
         // ページによって項目数が違うためクランプ
@@ -972,7 +1003,11 @@ export class BattleScene extends Phaser.Scene {
         this.commandPage = 'main'; // ターン開始時は必ずメイン
         this.updateCommandWindow();
 
-        this.showMessage(`${activeMember.name}のターン！`);
+        this.commandPage = 'main'; // ターン開始時は必ずメイン
+        this.updateCommandWindow();
+
+        // ターン開始メッセージは出さない（SFC版準拠）
+        // this.showMessage(`${activeMember.name}のターン！`);
         this.setCommandVisible(true);
         this.selectedCommand = 0;
         this.updateCursorPosition();
