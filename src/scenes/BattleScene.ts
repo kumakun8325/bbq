@@ -5,6 +5,8 @@
 
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '@/config/gameConfig';
+import { GameStateManager } from '@/managers/GameStateManager';
+import { WeaknessType } from '@/types';
 
 /** バトルコマンド */
 type BattleCommand = 'attack' | 'defend' | 'escape';
@@ -13,7 +15,7 @@ type BattleCommand = 'attack' | 'defend' | 'escape';
 type BattleState = 'start' | 'playerTurn' | 'enemyTurn' | 'victory' | 'defeat' | 'escaped' | 'waiting';
 
 /** 弱点属性タイプ */
-type WeaknessType = 'sword' | 'spear' | 'dagger' | 'axe' | 'bow' | 'staff' | 'fire' | 'ice' | 'lightning' | 'wind' | 'light' | 'dark';
+
 
 /** パーティメンバーデータ */
 interface PartyMemberData {
@@ -130,12 +132,9 @@ export class BattleScene extends Phaser.Scene {
 
     // パーティメンバーデータ（ATBゲージ含む）
     // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed) * speedModifier
-    private partyMembers: PartyMemberData[] = [
-        { name: 'とりくん', hp: 100, maxHp: 100, attack: 15, defense: 5, speed: 40, atb: 80, maxAtb: 100, spriteKey: 'player-battle', isDefending: false, weaponType: 'sword' },
-        { name: 'だいちゃん', hp: 80, maxHp: 80, attack: 20, defense: 3, speed: 50, atb: 60, maxAtb: 100, spriteKey: 'daichan-battle', isDefending: false, weaponType: 'axe' },
-        { name: 'しんいち', hp: 90, maxHp: 90, attack: 12, defense: 8, speed: 30, atb: 40, maxAtb: 100, spriteKey: 'shinichi-battle', isDefending: false, weaponType: 'bow' },
-        { name: 'たいさ', hp: 120, maxHp: 120, attack: 18, defense: 6, speed: 25, atb: 20, maxAtb: 100, spriteKey: 'taisa-battle', isDefending: false, weaponType: 'staff' }
-    ];
+    // パーティメンバーデータ（ATBゲージ含む）
+    // GameStateManagerから取得して設定
+    private partyMembers: PartyMemberData[] = [];
 
     // 現在行動可能なメンバーのインデックス（-1 = 誰も行動可能でない）
     private activePartyMemberIndex: number = -1;
@@ -193,6 +192,23 @@ export class BattleScene extends Phaser.Scene {
         this.battleState = 'start';
         this.selectedCommand = 0;
         this.activePartyMemberIndex = -1;
+
+        // パーティデータをGameStateManagerから取得
+        const globalParty = GameStateManager.getInstance().getParty();
+        this.partyMembers = globalParty.map(member => ({
+            name: member.name,
+            hp: member.currentHp,
+            maxHp: member.currentStats.maxHp,
+            attack: member.currentStats.attack,
+            defense: member.currentStats.defense,
+            speed: member.currentStats.speed,
+            atb: 0, // ランダムに設定するため一旦0
+            maxAtb: 100,
+            spriteKey: member.battleSpriteKey,
+            isDefending: false,
+            weaponType: member.defaultWeapon
+        }));
+        this.partyCount = this.partyMembers.length;
 
         // 設計書3.5.5: 通常エンカウントのATB初期値（ランダム30-70）
         for (const member of this.partyMembers) {
@@ -1152,6 +1168,16 @@ export class BattleScene extends Phaser.Scene {
      * バトル終了
      */
     private endBattle(): void {
+        // 戦闘結果をグローバルステートに反映
+        const globalParty = GameStateManager.getInstance().getParty();
+        this.partyMembers.forEach((localMember, index) => {
+            if (globalParty[index]) {
+                globalParty[index].currentHp = localMember.hp;
+                // 戦闘不能状態の更新
+                globalParty[index].isDead = localMember.hp <= 0;
+            }
+        });
+
         this.cameras.main.fadeOut(500, 0, 0, 0);
 
         this.cameras.main.once('camerafadeoutcomplete', () => {

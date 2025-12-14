@@ -8,8 +8,8 @@ export interface Position {
     y: number;
 }
 
-/** 属性タイプ */
-export type ElementType = 'fire' | 'ice' | 'thunder' | 'wind' | 'light' | 'dark' | 'physical';
+/** 弱点属性タイプ (武器種 + 魔法属性) */
+export type WeaknessType = 'sword' | 'spear' | 'dagger' | 'axe' | 'bow' | 'staff' | 'fire' | 'ice' | 'lightning' | 'wind' | 'light' | 'dark';
 
 /** キャラクターステータス */
 export interface CharacterStats {
@@ -24,17 +24,43 @@ export interface CharacterStats {
     exp: number;
 }
 
+/** キャラクター定義（不変データ） */
+export interface CharacterDefinition {
+    id: string;
+    name: string;
+    initialStats: CharacterStats;
+    spriteKey: string;
+    battleSpriteKey: string;
+    defaultWeapon: WeaknessType;
+}
+
+/** キャラクターインスタンス（可変データ） */
+export interface CharacterInstance extends CharacterDefinition {
+    currentStats: CharacterStats;
+    currentHp: number;
+    currentMp: number;
+    currentAtb: number;
+    isDead: boolean;
+    isDefending: boolean;
+}
+
 /** 敵データ */
 export interface EnemyData {
     id: string;
     name: string;
     stats: CharacterStats;
-    weakness: ElementType[];
+    weakness: WeaknessType[];
     shieldPoints: number;
     drops: ItemDrop[];
     expReward: number;
     goldReward: number;
     spriteKey: string;
+    // ブレイクシステム用
+    shield: number;
+    maxShield: number;
+    isBroken: boolean;
+    revealedWeaknesses: boolean[];
+    breakStartTurn: number;
 }
 
 /** アイテムドロップ */

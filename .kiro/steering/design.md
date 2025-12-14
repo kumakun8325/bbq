@@ -156,8 +156,8 @@ main (安定版)
 | `feature/player-sprite` | 歩行アニメーション付きプレイヤースプライト | ✅ マージ済 |
 | `feature/battle-improvements` | バトルUI改善、ダメージポップアップ | ✅ マージ済 |
 | `feature/enemy-sprites` | 敵スプライト作成（スライム/コウモリ/ゴブリン） | 🔨 開発中 |
-| `feature/shield-break` | オクトパストラベラー風シールド/ブレイクシステム | ⬜ 未着手 |
-| `feature/party-system` | パーティシステム | ⬜ 未着手 |
+| `feature/shield-break` | オクトパストラベラー風シールド/ブレイクシステム | ✅ マージ済 |
+| `feature/party-system` | パーティシステム | 🔨 開発中 |
 | `feature/save-load` | セーブ/ロード機能 | ⬜ 未着手 |
 
 ### 1.4 テスト運用方針
@@ -199,12 +199,14 @@ bbq/
 │   │   ├── BattleSystem.ts     
 │   │   ├── EncounterSystem.ts  
 │   │   └── SaveSystem.ts       
+│   ├── managers/               # (v0.2で追加)
+│   │   └── GameStateManager.ts # ゲーム全体の状態管理
 │   ├── ui/                     # (v0.2で追加)
 │   │   ├── CommandMenu.ts      
 │   │   └── HpBar.ts            
 │   ├── data/                   # (v0.2で追加)
-│   │   ├── enemies.json        
-│   │   └── characters.json     
+│   │   ├── enemies.ts          # JSONではなくTSで型安全に管理
+│   │   └── characters.ts       
 │   └── types/
 │       └── index.ts            # 型定義
 ├── assets/
@@ -261,7 +263,7 @@ BattleScene                                    │
 
 ```typescript
 // キャラクターステータス
-interface CharacterStats {
+export interface CharacterStats {
   hp: number;
   maxHp: number;
   mp: number;
@@ -273,8 +275,26 @@ interface CharacterStats {
   exp: number;
 }
 
+// キャラクター定義（不変データ）
+export interface CharacterDefinition {
+  id: string;
+  name: string;
+  initialStats: CharacterStats;
+  spriteKey: string;
+  defaultWeapon: WeaknessType;
+}
+
+// キャラクターインスタンス（可変データ）
+export interface CharacterInstance extends CharacterDefinition {
+  currentStats: CharacterStats; // 現在の能力値（装備補正込み）
+  currentHp: number;
+  currentMp: number;
+  isDead: boolean;
+  // 将来的には装備、状態異常などもここへ
+}
+
 // 敵データ
-interface EnemyData {
+export interface EnemyData {
   id: string;
   name: string;
   stats: CharacterStats;
@@ -286,12 +306,13 @@ interface EnemyData {
 }
 
 // オクトパストラベラー風バトルシステム用
-interface BreakableEnemy extends EnemyData {
+export interface BreakableEnemy extends EnemyData {
   shield: number;              // 現在のシールド
   maxShield: number;           // 最大シールド
   isBroken: boolean;           // ブレイク状態
   weaknesses: string[];        // 弱点リスト
 }
+
 ```
 
 ### 3.2 永続化データ (LocalStorage)
