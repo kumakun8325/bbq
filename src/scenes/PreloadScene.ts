@@ -92,8 +92,11 @@ export class PreloadScene extends Phaser.Scene {
         // タイトル画面用のプレースホルダー
         this.createPlaceholderTexture('title-bg', 480, 320, 0x1a1a2e);
 
-        // プレイヤースプライト用のプレースホルダー（16x16）
+        // プレイヤースプライト用（マップ移動用：4方向×3フレーム）
         this.createPlayerTexture();
+
+        // バトル用キャラクタースプライト（待機・攻撃・ダメージ）
+        this.createBattleCharacterTexture();
 
         // 敵スプライトの生成（ピクセルアート）
         this.createSlimeTexture();
@@ -273,6 +276,224 @@ export class PreloadScene extends Phaser.Scene {
 
         graphics.generateTexture('player', frameWidth * framesPerDirection, frameHeight * directions);
         graphics.destroy();
+    }
+
+    /**
+     * バトル用キャラクタースプライトを生成
+     * レイアウト: 3列 x 1行 = 48x24ピクセル
+     * フレーム0: 待機ポーズ（左向き、敵を見据える）
+     * フレーム1: 攻撃ポーズ（前に踏み込む）
+     * フレーム2: ダメージポーズ（後ろに仰け反る）
+     */
+    private createBattleCharacterTexture(): void {
+        const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 16;
+        const frameHeight = 24;
+        const frames = 3;  // 待機、攻撃、ダメージ
+
+        // 色定義
+        const colors = {
+            body: 0x4ade80,
+            bodyLight: 0x86efac,
+            bodyDark: 0x166534,
+            bodyMid: 0x22c55e,
+            beak: 0xfbbf24,
+            beakDark: 0xd97706,
+            eye: 0x1f2937,
+            eyeWhite: 0xffffff,
+            feet: 0xf97316,
+            feetDark: 0xea580c,
+            wing: 0x22c55e,
+            wingDark: 0x15803d,
+            scarf: 0xe94560,
+            scarfDark: 0xbe123c,
+        };
+
+        // フレーム0: 待機ポーズ（左向き、構えている）
+        this.drawBattleIdlePose(graphics, 0, 0, colors);
+
+        // フレーム1: 攻撃ポーズ（前に突き出す）
+        this.drawBattleAttackPose(graphics, frameWidth, 0, colors);
+
+        // フレーム2: ダメージポーズ（後ろに仰け反る）
+        this.drawBattleDamagePose(graphics, frameWidth * 2, 0, colors);
+
+        graphics.generateTexture('player-battle', frameWidth * frames, frameHeight);
+        graphics.destroy();
+
+        // フレームを追加
+        this.textures.get('player-battle').add(0, 0, 0, 0, frameWidth, frameHeight);
+        this.textures.get('player-battle').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
+        this.textures.get('player-battle').add(2, 0, frameWidth * 2, 0, frameWidth, frameHeight);
+    }
+
+    /**
+     * バトル待機ポーズを描画（左向き、敵を見据える）
+     */
+    private drawBattleIdlePose(
+        graphics: Phaser.GameObjects.Graphics,
+        x: number,
+        y: number,
+        colors: { [key: string]: number }
+    ): void {
+        // 足
+        graphics.fillStyle(colors.feetDark, 1);
+        graphics.fillRect(x + 4, y + 19, 3, 4);
+        graphics.fillRect(x + 9, y + 19, 3, 4);
+        graphics.fillStyle(colors.feet, 1);
+        graphics.fillRect(x + 4, y + 18, 3, 4);
+        graphics.fillRect(x + 9, y + 18, 3, 4);
+
+        // 体
+        graphics.fillStyle(colors.bodyDark, 1);
+        graphics.fillRoundedRect(x + 3, y + 8, 10, 10, 3);
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 3, y + 7, 10, 9, 3);
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 5, y + 8, 5, 4);
+
+        // スカーフ
+        graphics.fillStyle(colors.scarf, 1);
+        graphics.fillRect(x + 5, y + 13, 6, 2);
+        graphics.fillStyle(colors.scarfDark, 1);
+        graphics.fillRect(x + 10, y + 14, 3, 2);
+
+        // 頭
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 4, y + 2, 8, 7, 2);
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 5, y + 3, 4, 3);
+
+        // 目（左を向いているので左側に）
+        graphics.fillStyle(colors.eyeWhite, 1);
+        graphics.fillRect(x + 4, y + 4, 3, 3);
+        graphics.fillStyle(colors.eye, 1);
+        graphics.fillRect(x + 4, y + 5, 2, 2);
+
+        // くちばし（左向き）
+        graphics.fillStyle(colors.beak, 1);
+        graphics.fillRect(x + 1, y + 6, 4, 2);
+        graphics.fillStyle(colors.beakDark, 1);
+        graphics.fillRect(x + 1, y + 7, 4, 1);
+
+        // 羽（体の横、構え）
+        graphics.fillStyle(colors.wing, 1);
+        graphics.fillRect(x + 11, y + 8, 3, 5);
+        graphics.fillStyle(colors.wingDark, 1);
+        graphics.fillRect(x + 12, y + 11, 2, 2);
+    }
+
+    /**
+     * バトル攻撃ポーズを描画（前に踏み込む、羽を前に突き出す）
+     */
+    private drawBattleAttackPose(
+        graphics: Phaser.GameObjects.Graphics,
+        x: number,
+        y: number,
+        colors: { [key: string]: number }
+    ): void {
+        // 足（前に踏み込み）
+        graphics.fillStyle(colors.feetDark, 1);
+        graphics.fillRect(x + 2, y + 19, 3, 4);
+        graphics.fillRect(x + 7, y + 18, 3, 5);
+        graphics.fillStyle(colors.feet, 1);
+        graphics.fillRect(x + 2, y + 18, 3, 4);
+        graphics.fillRect(x + 7, y + 17, 3, 5);
+
+        // 体（前傾）
+        graphics.fillStyle(colors.bodyDark, 1);
+        graphics.fillRoundedRect(x + 1, y + 7, 10, 10, 3);
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 1, y + 6, 10, 9, 3);
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 3, y + 7, 5, 4);
+
+        // スカーフ（後ろにたなびく）
+        graphics.fillStyle(colors.scarf, 1);
+        graphics.fillRect(x + 3, y + 12, 6, 2);
+        graphics.fillStyle(colors.scarfDark, 1);
+        graphics.fillRect(x + 8, y + 11, 4, 3);
+        graphics.fillRect(x + 11, y + 10, 3, 2);
+
+        // 頭（前傾、やや下を向く）
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 2, y + 2, 8, 7, 2);
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 3, y + 3, 4, 3);
+
+        // 目（気合の入った目）
+        graphics.fillStyle(colors.eyeWhite, 1);
+        graphics.fillRect(x + 2, y + 4, 3, 3);
+        graphics.fillStyle(colors.eye, 1);
+        graphics.fillRect(x + 2, y + 5, 2, 2);
+
+        // くちばし（開いている、気合）
+        graphics.fillStyle(colors.beak, 1);
+        graphics.fillRect(x - 1, y + 5, 4, 2);
+        graphics.fillRect(x - 1, y + 7, 3, 1);
+        graphics.fillStyle(colors.beakDark, 1);
+        graphics.fillRect(x - 1, y + 6, 4, 1);
+
+        // 羽（前に突き出す攻撃モーション）
+        graphics.fillStyle(colors.wing, 1);
+        graphics.fillRect(x - 2, y + 7, 5, 4);
+        graphics.fillStyle(colors.wingDark, 1);
+        graphics.fillRect(x - 2, y + 9, 2, 2);
+    }
+
+    /**
+     * バトルダメージポーズを描画（後ろに仰け反る）
+     */
+    private drawBattleDamagePose(
+        graphics: Phaser.GameObjects.Graphics,
+        x: number,
+        y: number,
+        colors: { [key: string]: number }
+    ): void {
+        // 足（後ろに体重）
+        graphics.fillStyle(colors.feetDark, 1);
+        graphics.fillRect(x + 6, y + 19, 3, 4);
+        graphics.fillRect(x + 11, y + 19, 3, 4);
+        graphics.fillStyle(colors.feet, 1);
+        graphics.fillRect(x + 6, y + 18, 3, 4);
+        graphics.fillRect(x + 11, y + 18, 3, 4);
+
+        // 体（後傾）
+        graphics.fillStyle(colors.bodyDark, 1);
+        graphics.fillRoundedRect(x + 5, y + 8, 10, 10, 3);
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 5, y + 7, 10, 9, 3);
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 7, y + 8, 5, 4);
+
+        // スカーフ（衝撃で前に）
+        graphics.fillStyle(colors.scarf, 1);
+        graphics.fillRect(x + 7, y + 13, 6, 2);
+        graphics.fillStyle(colors.scarfDark, 1);
+        graphics.fillRect(x + 4, y + 12, 4, 3);
+
+        // 頭（後ろに仰け反る）
+        graphics.fillStyle(colors.body, 1);
+        graphics.fillRoundedRect(x + 6, y + 1, 8, 7, 2);
+        graphics.fillStyle(colors.bodyLight, 1);
+        graphics.fillRect(x + 7, y + 2, 4, 3);
+
+        // 目（ダメージで閉じる/驚く）
+        graphics.fillStyle(colors.eye, 1);
+        graphics.fillRect(x + 6, y + 4, 3, 1);
+        graphics.fillRect(x + 7, y + 3, 1, 3);
+
+        // くちばし
+        graphics.fillStyle(colors.beak, 1);
+        graphics.fillRect(x + 3, y + 5, 4, 2);
+        graphics.fillStyle(colors.beakDark, 1);
+        graphics.fillRect(x + 3, y + 6, 4, 1);
+
+        // 羽（広がる）
+        graphics.fillStyle(colors.wing, 1);
+        graphics.fillRect(x + 13, y + 6, 3, 6);
+        graphics.fillStyle(colors.wingDark, 1);
+        graphics.fillRect(x + 14, y + 10, 2, 2);
     }
 
     /**
@@ -825,6 +1046,9 @@ export class PreloadScene extends Phaser.Scene {
         // プレイヤーアニメーションを定義
         this.createPlayerAnimations();
 
+        // バトル用キャラクターアニメーションを定義
+        this.createBattleCharacterAnimations();
+
         // 敵アニメーションを定義
         this.createEnemyAnimations();
 
@@ -907,6 +1131,34 @@ export class PreloadScene extends Phaser.Scene {
         });
 
         console.log('Player animations created');
+    }
+
+    /**
+     * バトル用キャラクターアニメーションを定義
+     */
+    private createBattleCharacterAnimations(): void {
+        // バトル待機（左向き）
+        this.anims.create({
+            key: 'battle-idle',
+            frames: [{ key: 'player-battle', frame: 0 }],
+            frameRate: 1
+        });
+
+        // バトル攻撃（前に踏み込む）
+        this.anims.create({
+            key: 'battle-attack',
+            frames: [{ key: 'player-battle', frame: 1 }],
+            frameRate: 1
+        });
+
+        // バトルダメージ（後ろに仰け反る）
+        this.anims.create({
+            key: 'battle-damage',
+            frames: [{ key: 'player-battle', frame: 2 }],
+            frameRate: 1
+        });
+
+        console.log('Battle character animations created');
     }
 
     /**

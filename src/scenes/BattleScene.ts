@@ -169,8 +169,8 @@ export class BattleScene extends Phaser.Scene {
             this.enemy.spriteKey
         );
 
-        // スプライトのスケール（必要に応じて調整）
-        this.enemySprite.setScale(2);
+        // スプライトのスケール（FF6 Pixel Remaster風に調整）
+        this.enemySprite.setScale(1.5);
 
         // アイドルアニメーションを再生
         const animKey = `${this.enemy.spriteKey}-idle`;
@@ -201,29 +201,27 @@ export class BattleScene extends Phaser.Scene {
 
         // パーティメンバーの配置（最大4人）
         // FF6風：右上から左下に斜めに並ぶ
-        const baseX = GAME_WIDTH * 0.75;  // 右側
-        const baseY = GAME_HEIGHT * 0.2;  // 開始Y位置
-        const offsetX = -20;  // 各キャラの横オフセット（左へ）
-        const offsetY = 45;   // 各キャラの縦オフセット（下へ）
+        const baseX = GAME_WIDTH * 0.78;  // 右側
+        const baseY = GAME_HEIGHT * 0.25;  // 開始Y位置
+        const offsetX = -15;  // 各キャラの横オフセット（左へ）
+        const offsetY = 35;   // 各キャラの縦オフセット（下へ）
 
         for (let i = 0; i < this.partyCount; i++) {
             const x = baseX + (offsetX * i);
             const y = baseY + (offsetY * i);
 
-            // プレイヤースプライトを作成（右向き固定）
-            const sprite = this.add.sprite(x, y, 'player');
-            sprite.setScale(2);
+            // バトル用スプライトを使用（左向き待機ポーズ）
+            const sprite = this.add.sprite(x, y, 'player-battle');
+            sprite.setScale(1.5);
 
-            // 右向きのアイドルアニメーション（敵の方を向く）
-            // フレーム3は左向きなので、flipXで右向きに
-            sprite.setFrame(3);  // 左向きフレーム
-            sprite.setFlipX(true);  // 反転して右向き（敵の方向）に
+            // 待機ポーズ（フレーム0）- 左向きで敵を見据える
+            sprite.setFrame(0);
 
             // 待機モーション（軽い揺れ）
             this.tweens.add({
                 targets: sprite,
                 y: y - 2,
-                duration: 800 + i * 100,  // 少しずつタイミングをずらす
+                duration: 800 + i * 100,
                 yoyo: true,
                 repeat: -1,
                 ease: 'Sine.easeInOut'
@@ -503,24 +501,56 @@ export class BattleScene extends Phaser.Scene {
             false
         );
 
-        this.enemy.hp -= damage;
+        // パーティメンバーを攻撃ポーズに切り替え
+        this.partySprites.forEach((sprite, index) => {
+            if (index === 0) {  // 1人目だけ攻撃モーション
+                // 攻撃ポーズに変更
+                sprite.setFrame(1);
 
-        // 敵が揺れる（クリティカル時は激しく）
-        this.tweens.add({
-            targets: this.enemySprite,
-            x: this.enemySprite.x + (isCritical ? 20 : 10),
-            duration: isCritical ? 30 : 50,
-            yoyo: true,
-            repeat: isCritical ? 5 : 3
+                // 前に踏み込むアニメーション
+                const originalX = sprite.x;
+                this.tweens.add({
+                    targets: sprite,
+                    x: sprite.x - 30,  // 敵に向かって踏み込む
+                    duration: 150,
+                    ease: 'Power2',
+                    onComplete: () => {
+                        // 元の位置に戻る
+                        this.tweens.add({
+                            targets: sprite,
+                            x: originalX,
+                            duration: 200,
+                            ease: 'Power2',
+                            onComplete: () => {
+                                // 待機ポーズに戻す
+                                sprite.setFrame(0);
+                            }
+                        });
+                    }
+                });
+            }
         });
 
-        // ダメージポップアップ
-        this.showDamagePopup(
-            this.enemySprite.x,
-            this.enemySprite.y - 30,
-            damage,
-            isCritical
-        );
+        this.enemy.hp -= damage;
+
+        // 敵が揺れる（クリティカル時は激しく）- 少し遅延してから
+        this.time.delayedCall(150, () => {
+            this.tweens.add({
+                targets: this.enemySprite,
+                x: this.enemySprite.x + (isCritical ? 20 : 10),
+                duration: isCritical ? 30 : 50,
+                yoyo: true,
+                repeat: isCritical ? 5 : 3
+            });
+
+            // ダメージポップアップ
+            this.showDamagePopup(
+                this.enemySprite.x,
+                this.enemySprite.y - 30,
+                damage,
+                isCritical
+            );
+        });
 
         // メッセージ
         const critText = isCritical ? 'クリティカル！ ' : '';
@@ -584,17 +614,41 @@ export class BattleScene extends Phaser.Scene {
 
         this.playerHp -= damage;
 
+        // パーティメンバーをダメージポーズに切り替え
+        this.partySprites.forEach((sprite) => {
+            // ダメージポーズに変更
+            sprite.setFrame(2);
+
+            // 後ろに仰け反るアニメーション
+            const originalX = sprite.x;
+            this.tweens.add({
+                targets: sprite,
+                x: sprite.x + 15,  // 後ろに仰け反る
+                duration: 100,
+                ease: 'Power2',
+                yoyo: true,
+                onComplete: () => {
+                    // 待機ポーズに戻す
+                    this.time.delayedCall(300, () => {
+                        sprite.setFrame(0);
+                    });
+                }
+            });
+        });
+
         // プレイヤーのダメージエフェクト（画面揺れ）
         const shakeIntensity = isCritical ? 0.02 : 0.01;
         this.cameras.main.shake(isCritical ? 200 : 100, shakeIntensity);
 
-        // ダメージポップアップ（画面中央下部）
-        this.showDamagePopup(
-            GAME_WIDTH / 2,
-            GAME_HEIGHT * 0.65,
-            damage,
-            isCritical
-        );
+        // ダメージポップアップ（パーティスプライト付近）
+        if (this.partySprites.length > 0) {
+            this.showDamagePopup(
+                this.partySprites[0].x,
+                this.partySprites[0].y - 30,
+                damage,
+                isCritical
+            );
+        }
 
         // メッセージ
         const critText = isCritical ? 'クリティカル！ ' : '';
