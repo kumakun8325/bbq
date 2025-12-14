@@ -5,6 +5,7 @@
 
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/gameConfig";
+import { BATTLE_SYSTEM, BATTLE_UI, PARTY_LAYOUT, ENEMY_LAYOUT, ANIMATION_DURATION } from "@/config/battleConfig";
 import { GameStateManager } from "@/managers/GameStateManager";
 import {
   WeaknessType,
@@ -19,7 +20,8 @@ import { ITEMS } from "@/data/items";
 import { ABILITIES } from "@/data/abilities";
 import { getEnemyData } from "@/data/enemies";
 import { calculateDamage } from "@/systems/DamageCalculator";
-import { getWeaknessIcon, formatWeaknessDisplay } from "@/systems/BattleUtils";
+import { formatWeaknessDisplay } from "@/systems/BattleUtils";
+import { drawWindow, drawHpBar, drawAtbBar, drawAtbFrame } from "@/ui/BattleUIHelpers";
 
 
 export class BattleScene extends Phaser.Scene {
@@ -35,16 +37,13 @@ export class BattleScene extends Phaser.Scene {
 
   // パーティメンバーデータ（ATBゲージ含む）
   // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed) * speedModifier
-  // パーティメンバーデータ（ATBゲージ含む）
   // GameStateManagerから取得して設定
   private partyMembers: PartyMemberBattleData[] = [];
 
   // 現在行動可能なメンバーのインデックス（-1 = 誰も行動可能でない）
   private activePartyMemberIndex: number = -1;
 
-  // ATB設定（設計書3.5.2準拠）
-  private readonly ATB_BASE_SPEED = 0.3; // 基本回復速度
-  private readonly ATB_SPEED_DIVISOR = 100; // スピード値の除数
+  // ATB設定は config/battleConfig.ts の BATTLE_SYSTEM を使用
 
   // バトル状態
   private battleState: BattleState = "start";
@@ -2146,7 +2145,7 @@ export class BattleScene extends Phaser.Scene {
       if (member.atb < member.maxAtb) {
         // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed/100)
         const atbRecovery =
-          this.ATB_BASE_SPEED + member.speed / this.ATB_SPEED_DIVISOR;
+          BATTLE_SYSTEM.ATB_BASE_SPEED + member.speed / BATTLE_SYSTEM.ATB_SPEED_DIVISOR;
         member.atb = Math.min(member.maxAtb, member.atb + atbRecovery);
       }
 
@@ -2183,7 +2182,7 @@ export class BattleScene extends Phaser.Scene {
     // === 敵のATB回復 ===
     if (this.enemy.hp > 0 && this.enemy.atb < this.enemy.maxAtb) {
       const enemyAtbRecovery =
-        this.ATB_BASE_SPEED + this.enemy.speed / this.ATB_SPEED_DIVISOR;
+        BATTLE_SYSTEM.ATB_BASE_SPEED + this.enemy.speed / BATTLE_SYSTEM.ATB_SPEED_DIVISOR;
       this.enemy.atb = Math.min(
         this.enemy.maxAtb,
         this.enemy.atb + enemyAtbRecovery,
