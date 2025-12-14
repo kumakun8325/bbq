@@ -96,7 +96,14 @@ export class PreloadScene extends Phaser.Scene {
         this.createPlayerTexture();
 
         // バトル用キャラクタースプライト（待機・攻撃・ダメージ）
+        // とりくん
         this.createBattleCharacterTexture();
+        // だいちゃん（青い鳥）
+        this.createDaichanBattleTexture();
+        // しんいち（赤い鳥）
+        this.createShinichiCBattleTexture();
+        // たいさ（黄色い鳥）
+        this.createTaisaBattleTexture();
 
         // 敵スプライトの生成（ピクセルアート）
         this.createSlimeTexture();
@@ -325,6 +332,123 @@ export class PreloadScene extends Phaser.Scene {
         this.textures.get('player-battle').add(0, 0, 0, 0, frameWidth, frameHeight);
         this.textures.get('player-battle').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
         this.textures.get('player-battle').add(2, 0, frameWidth * 2, 0, frameWidth, frameHeight);
+    }
+
+    /**
+     * だいちゃんバトル用スプライトを生成（青い鳥）
+     */
+    private createDaichanBattleTexture(): void {
+        const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 16;
+        const frameHeight = 24;
+        const frames = 3;
+
+        // 青い鳥の色定義
+        const colors = {
+            body: 0x3b82f6,       // 青
+            bodyLight: 0x60a5fa,  // 明るい青
+            bodyDark: 0x1d4ed8,   // 暗い青
+            bodyMid: 0x2563eb,
+            beak: 0xfbbf24,
+            beakDark: 0xd97706,
+            eye: 0x1f2937,
+            eyeWhite: 0xffffff,
+            feet: 0xf97316,
+            feetDark: 0xea580c,
+            wing: 0x2563eb,
+            wingDark: 0x1e40af,
+            scarf: 0x22c55e,      // 緑のスカーフ
+            scarfDark: 0x15803d,
+        };
+
+        this.drawBattleIdlePose(graphics, 0, 0, colors);
+        this.drawBattleAttackPose(graphics, frameWidth, 0, colors);
+        this.drawBattleDamagePose(graphics, frameWidth * 2, 0, colors);
+
+        graphics.generateTexture('daichan-battle', frameWidth * frames, frameHeight);
+        graphics.destroy();
+
+        this.textures.get('daichan-battle').add(0, 0, 0, 0, frameWidth, frameHeight);
+        this.textures.get('daichan-battle').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
+        this.textures.get('daichan-battle').add(2, 0, frameWidth * 2, 0, frameWidth, frameHeight);
+    }
+
+    /**
+     * しんいちバトル用スプライトを生成（赤い鳥）
+     */
+    private createShinichiCBattleTexture(): void {
+        const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 16;
+        const frameHeight = 24;
+        const frames = 3;
+
+        // 赤い鳥の色定義
+        const colors = {
+            body: 0xef4444,       // 赤
+            bodyLight: 0xf87171,  // 明るい赤
+            bodyDark: 0xb91c1c,   // 暗い赤
+            bodyMid: 0xdc2626,
+            beak: 0xfbbf24,
+            beakDark: 0xd97706,
+            eye: 0x1f2937,
+            eyeWhite: 0xffffff,
+            feet: 0xf97316,
+            feetDark: 0xea580c,
+            wing: 0xdc2626,
+            wingDark: 0x991b1b,
+            scarf: 0x3b82f6,      // 青いスカーフ
+            scarfDark: 0x1d4ed8,
+        };
+
+        this.drawBattleIdlePose(graphics, 0, 0, colors);
+        this.drawBattleAttackPose(graphics, frameWidth, 0, colors);
+        this.drawBattleDamagePose(graphics, frameWidth * 2, 0, colors);
+
+        graphics.generateTexture('shinichi-battle', frameWidth * frames, frameHeight);
+        graphics.destroy();
+
+        this.textures.get('shinichi-battle').add(0, 0, 0, 0, frameWidth, frameHeight);
+        this.textures.get('shinichi-battle').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
+        this.textures.get('shinichi-battle').add(2, 0, frameWidth * 2, 0, frameWidth, frameHeight);
+    }
+
+    /**
+     * たいさバトル用スプライトを生成（黄色い鳥）
+     */
+    private createTaisaBattleTexture(): void {
+        const graphics = this.make.graphics({ x: 0, y: 0 });
+        const frameWidth = 16;
+        const frameHeight = 24;
+        const frames = 3;
+
+        // 黄色い鳥の色定義
+        const colors = {
+            body: 0xfbbf24,       // 黄色
+            bodyLight: 0xfcd34d,  // 明るい黄色
+            bodyDark: 0xd97706,   // 暗い黄色/オレンジ
+            bodyMid: 0xf59e0b,
+            beak: 0xf97316,       // オレンジのくちばし
+            beakDark: 0xea580c,
+            eye: 0x1f2937,
+            eyeWhite: 0xffffff,
+            feet: 0xea580c,
+            feetDark: 0xc2410c,
+            wing: 0xf59e0b,
+            wingDark: 0xb45309,
+            scarf: 0x8b5cf6,      // 紫のスカーフ
+            scarfDark: 0x6d28d9,
+        };
+
+        this.drawBattleIdlePose(graphics, 0, 0, colors);
+        this.drawBattleAttackPose(graphics, frameWidth, 0, colors);
+        this.drawBattleDamagePose(graphics, frameWidth * 2, 0, colors);
+
+        graphics.generateTexture('taisa-battle', frameWidth * frames, frameHeight);
+        graphics.destroy();
+
+        this.textures.get('taisa-battle').add(0, 0, 0, 0, frameWidth, frameHeight);
+        this.textures.get('taisa-battle').add(1, 0, frameWidth, 0, frameWidth, frameHeight);
+        this.textures.get('taisa-battle').add(2, 0, frameWidth * 2, 0, frameWidth, frameHeight);
     }
 
     /**
