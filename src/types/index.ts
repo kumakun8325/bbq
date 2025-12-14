@@ -33,6 +33,7 @@ export interface CharacterDefinition {
     battleSpriteKey: string;
     defaultWeapon: WeaknessType;
     specialCommandName: string; // 固有技名
+    abilityId: string; // 固有アビリティID
 }
 
 /** キャラクターインスタンス（可変データ） */
@@ -129,4 +130,36 @@ export interface SceneTransitionData {
     returnScene?: string;
     playerPosition?: Position;
     [key: string]: unknown;
+}
+
+/** ターゲット範囲 */
+export type TargetScope = 'self' | 'single_ally' | 'all_allies' | 'single_enemy' | 'all_enemies';
+
+/** アビリティ定義 */
+export interface AbilityDefinition {
+    id: string;
+    name: string;
+    description: string;
+    mpCost: number;
+    targetScope: TargetScope;
+    power?: number;  // 威力倍率 (例: 1.5)
+    effectType?: 'damage' | 'heal_hp' | 'heal_mp' | 'buff' | 'debuff' | 'special';
+    // 特殊効果パラメータ
+    shieldDamage?: number; // シールド削減値
+    isCritical?: boolean;  // 確定クリティカル
+}
+
+/** アイテムタイプ */
+export type ItemType = 'consumable' | 'weapon' | 'armor' | 'accessory' | 'key';
+
+/** アイテム定義 */
+export interface ItemDefinition {
+    id: string;
+    name: string;
+    description: string;
+    type: ItemType;
+    targetScope?: TargetScope;
+    effectType?: 'heal_hp' | 'heal_mp' | 'revive' | 'buff' | 'special';
+    effectValue?: number; // 回復量など
+    price: number;
 }

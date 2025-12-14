@@ -6,7 +6,9 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/gameConfig";
 import { GameStateManager } from "@/managers/GameStateManager";
-import { WeaknessType } from "@/types";
+import { WeaknessType, TargetScope } from "@/types";
+import { ITEMS } from "@/data/items";
+import { ABILITIES } from "@/data/abilities";
 
 /** バトルコマンド */
 type BattleCommand = "attack" | "defend" | "escape" | "skill" | "item";
@@ -15,6 +17,8 @@ type BattleCommand = "attack" | "defend" | "escape" | "skill" | "item";
 type BattleState =
   | "start"
   | "playerTurn"
+  | "selectItem" // アイテム選択
+  | "selectTarget" // ターゲット選択
   | "enemyTurn"
   | "victory"
   | "defeat"
@@ -22,21 +26,28 @@ type BattleState =
   | "waiting"
   | "executing";
 
-/** 弱点属性タイプ */
+/** ターゲット選択モード */
+interface TargetSelectionResult {
+  type: 'enemy' | 'party';
+  index: number;
+}
 
 /** パーティメンバーデータ */
 interface PartyMemberData {
   name: string;
   hp: number;
   maxHp: number;
+  mp: number; // MP追加
+  maxMp: number; // MaxMP追加
   attack: number;
   defense: number;
-  speed: number; // ATB回復速度に影響
+  speed: number;
   atb: number;
   maxAtb: number;
   spriteKey: string;
-  isDefending: boolean; // 防御中フラグ
-  weaponType: WeaknessType; // 装備武器のタイプ（MVPでは固定）
+  isDefending: boolean;
+  weaponType: WeaknessType;
+  abilityId: string; // 固有アビリティID追加
 }
 
 /** 敵データ */
@@ -169,6 +180,7 @@ export class BattleScene extends Phaser.Scene {
 
   // パーティメンバーのHP表示（4人分）
   private partyHpTexts: Phaser.GameObjects.Text[] = [];
+  private partyMpTexts: Phaser.GameObjects.Text[] = []; // MP表示追加
   private partyAtbBars: Phaser.GameObjects.Graphics[] = []; // ATBゲージ
 
   // ブレイクシステムUI
@@ -184,11 +196,30 @@ export class BattleScene extends Phaser.Scene {
   private turnText!: Phaser.GameObjects.Text;
   private actedPartyMemberIndices: Set<number> = new Set(); // 今のターンに行動済みのメンバーインデックス
 
+  // アイテム・スキル選択用
+  private tempCommandStack: { state: BattleState, commandPage: string, selected: number }[] = []; // 戻る用スタック
+  private selectedItemIndex: number = 0;
+  private availableItems: string[] = ['potion', 'high_potion', 'ether']; // MVP用固定アイテムリスト
+  private itemWindowGraphics!: Phaser.GameObjects.Graphics;
+  private itemTexts: Phaser.GameObjects.Text[] = [];
+  private commandWindowGraphics!: Phaser.GameObjects.Graphics; // 追加
+
+  // ターゲット選択用
+  private selectedTargetIndex: number = 0; // 0=敵, 0-3=味方
+  private targetScope: TargetScope = 'single_enemy'; // 現在選択中のアクションのスコープ
+  private currentAction: { type: 'attack' | 'skill' | 'item', id?: string } = { type: 'attack' }; // 実行予定のアクション
+
   // HPバー（後方互換性のため残す）
   private playerHpBar!: Phaser.GameObjects.Graphics;
   private enemyHpBar!: Phaser.GameObjects.Graphics;
   private playerHpBarBg!: Phaser.GameObjects.Graphics;
   private enemyHpBarBg!: Phaser.GameObjects.Graphics;
+
+  // ATB満タン時の手カーソル（各パーティメンバー用）
+  private readyArrows: Phaser.GameObjects.Sprite[] = [];
+
+  // ターゲット選択用手カーソル
+  private targetFingerCursor!: Phaser.GameObjects.Sprite;
 
   constructor() {
     super({ key: "BattleScene" });
@@ -215,6 +246,8 @@ export class BattleScene extends Phaser.Scene {
       name: member.name,
       hp: member.currentHp,
       maxHp: member.currentStats.maxHp,
+      mp: member.currentMp, // MP追加
+      maxMp: member.currentStats.maxMp, // MaxMP追加
       attack: member.currentStats.attack,
       defense: member.currentStats.defense,
       speed: member.currentStats.speed,
@@ -223,6 +256,7 @@ export class BattleScene extends Phaser.Scene {
       spriteKey: member.battleSpriteKey,
       isDefending: false,
       weaponType: member.defaultWeapon,
+      abilityId: member.abilityId, // アビリティID追加
     }));
     this.partyCount = this.partyMembers.length;
 
@@ -541,11 +575,12 @@ export class BattleScene extends Phaser.Scene {
     this.partyAtbBars = [];
 
     const rowHeight = 32;
-    // 各カラムの相対X位置
-    const nameRelX = 20;
-    const hpRelX = 160;
-    const atbRelX = 350; // HPと被らないように調整 (300 -> 350)
-    const atbWidth = 100;
+    // 各カラムの相対X位置 (レイアウト調整: Name | HP | MP | ATB)
+    const nameRelX = 15;
+    const hpRelX = 140;
+    const mpRelX = 270; // MP表示位置（ATBと被らないように左へ）
+    const atbRelX = 350; // 少し右へ
+    const atbWidth = 90; // 少し短く
 
     for (let i = 0; i < this.partyCount; i++) {
       const member = this.partyMembers[i];
@@ -559,18 +594,26 @@ export class BattleScene extends Phaser.Scene {
         shadow: { offsetX: 2, offsetY: 2, color: "#000", blur: 0, fill: true },
       });
 
-      // HP (数値)
-      const hpStr =
-        `${member.hp}`.padStart(4, " ") +
-        "/" +
-        `${member.maxHp}`.padStart(4, " ");
+      // HP (数値) HP: 123
+      const hpStr = `HP ${member.hp}`.padEnd(7, " ");
+      // const hpStr = `${member.hp}`.padStart(4, " ") + "/" + `${member.maxHp}`.padStart(4, " ");
       const hpText = this.add.text(partyWindowX + hpRelX, rowY, hpStr, {
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: "16px",
+        fontSize: "14px",
         color: "#ffffff",
-        shadow: { offsetX: 2, offsetY: 2, color: "#000", blur: 0, fill: true },
+        shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
       });
       this.partyHpTexts.push(hpText);
+
+      // MP (現在値/最大値)
+      const mpStr = `${member.mp}/${member.maxMp}`;
+      const mpText = this.add.text(partyWindowX + mpRelX, rowY, mpStr, {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: "14px",
+        color: "#60a5fa", // 青系
+        shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
+      });
+      this.partyMpTexts.push(mpText);
 
       // ATBゲージ
       const atbAbsX = partyWindowX + atbRelX;
@@ -579,10 +622,10 @@ export class BattleScene extends Phaser.Scene {
       const atbFrame = this.add.graphics();
       // 背景色（暗い色）
       atbFrame.fillStyle(0x222222, 1);
-      atbFrame.fillRoundedRect(atbAbsX, rowY + 10, atbWidth, 10, 4);
+      atbFrame.fillRoundedRect(atbAbsX, rowY, atbWidth, 10, 4);
       // 枠線（明るいグレー）
       atbFrame.lineStyle(2, 0xaaaaaa, 1);
-      atbFrame.strokeRoundedRect(atbAbsX, rowY + 10, atbWidth, 10, 4);
+      atbFrame.strokeRoundedRect(atbAbsX, rowY, atbWidth, 10, 4);
 
       // ゲージ本体
       const atbBar = this.add.graphics();
@@ -590,7 +633,7 @@ export class BattleScene extends Phaser.Scene {
       this.drawAtbBar(
         atbBar,
         atbAbsX + 2,
-        rowY + 12,
+        rowY + 2,
         atbWidth - 4,
         6,
         member.atb,
@@ -623,6 +666,23 @@ export class BattleScene extends Phaser.Scene {
       },
     );
     this.cursor.setVisible(false); // 初期は非表示
+
+    // ATB満タン時のカーソル（下向き矢印）
+    this.readyArrows = [];
+    for (let i = 0; i < this.partyCount; i++) {
+      const arrow = this.add.sprite(0, 0, 'arrow-down');
+      arrow.setOrigin(0.5, 0); // 上端中央を基準に（矢印が下を向く）
+      arrow.setScale(2); // 2倍サイズで見やすく
+      arrow.setDepth(150);
+      arrow.setVisible(false);
+      this.readyArrows.push(arrow);
+    }
+
+    // ターゲット選択用カーソル（初期テクスチャはhand-cursor、setFlipXやsetOriginは使用時に制御）
+    this.targetFingerCursor = this.add.sprite(0, 0, 'hand-cursor');
+    this.targetFingerCursor.setScale(2); // 2倍サイズで見やすく
+    this.targetFingerCursor.setDepth(400);
+    this.targetFingerCursor.setVisible(false);
   }
 
   /**
@@ -661,43 +721,34 @@ export class BattleScene extends Phaser.Scene {
     this.commandTexts.forEach((t) => t.destroy());
     this.commandTexts = [];
 
-    // 背景も再描画が必要（updateCommandWindowで管理していないため、別途管理が必要）
-    // 簡易的にここで背景Graphicsも管理するか、固定位置ならcreateUIで作る
-    // ご要望の動画を見ると、左下のステータスウィンドウの上に被さるようにコマンドウィンドウが出る
+    // 背景クリア
+    if (this.commandWindowGraphics) {
+      this.commandWindowGraphics.destroy();
+    }
 
     // コマンドウィンドウ位置：左下の敵名ウィンドウの上に表示
-    // 固定位置にする
     const margin = 10;
     const uiY = GAME_HEIGHT - 150;
 
-    // 敵名ウィンドウと同じ位置・サイズ感で表示
-    // cmdYは少し上にずらすか、ぴったり合わせるか。動画ではぴったり合っているように見える
     let cmdX = margin;
-    // コマンドの数に応じて高さが変わるが、下底を合わせるのが一般的だが、
-    // FF6は上底合わせで下に伸びていく
     let cmdY = uiY;
 
-    // 幅は敵ウィンドウ幅に合わせるか、固定にするか
-    // 敵ウィンドウ幅は createUI で計算しているが、ここでは再計算が必要
-    // 敵ウィンドウ幅 = (GAME_WIDTH - 20) * 0.35
     const totalWidth = GAME_WIDTH - 20;
     const enemyWindowWidth = Math.floor(totalWidth * 0.35);
 
     const cmdWidth = enemyWindowWidth;
 
-    // 背景（毎回クリアするのは非効率だが、簡略化のため）
-    // TODO: コマンドウィンドウ背景をメンバ変数に持って管理する
-    // const uiY = GAME_HEIGHT - 180; // 前のコードのY位置参照用
-
     let commandsToShow: string[] = [];
 
     if (this.commandPage === "main") {
-      // アクティブメンバーの固有技名を取得
+      // アクティブメンバーの固有技名をABILITIESから取得
       let skillName = "とくぎ";
       if (this.activePartyMemberIndex >= 0) {
         const member = this.partyMembers[this.activePartyMemberIndex];
-        // @ts-ignore
-        skillName = member.specialCommandName || "とくぎ";
+        const ability = ABILITIES[member.abilityId];
+        if (ability) {
+          skillName = ability.name;
+        }
       }
       commandsToShow = ["たたかう", skillName, "アイテム"];
     } else if (this.commandPage === "defend") {
@@ -706,21 +757,18 @@ export class BattleScene extends Phaser.Scene {
       commandsToShow = ["にげる"];
     }
 
-    // 背景描画（簡易実装：テキストの裏に追加）
-    const bg = this.add.graphics();
-    bg.fillStyle(0x000044, 0.95);
-    bg.fillRect(cmdX, cmdY, cmdWidth, commandsToShow.length * 40 + 20);
-    bg.lineStyle(4, 0xffffff, 1);
-    bg.strokeRect(
+    // 背景描画
+    this.commandWindowGraphics = this.add.graphics();
+    this.commandWindowGraphics.fillStyle(0x000044, 0.95);
+    this.commandWindowGraphics.fillRect(cmdX, cmdY, cmdWidth, commandsToShow.length * 40 + 20);
+    this.commandWindowGraphics.lineStyle(4, 0xffffff, 1);
+    this.commandWindowGraphics.strokeRect(
       cmdX + 2,
       cmdY + 2,
       cmdWidth - 4,
       commandsToShow.length * 40 + 16,
     );
-    bg.setDepth(190);
-    // このbgをどこかで消す必要がある。commandTextsと一緒に管理するハック
-    // @ts-ignore
-    bg.destroyOnClear = true;
+    this.commandWindowGraphics.setDepth(190);
 
     // コマンドテキスト生成
     commandsToShow.forEach((label, index) => {
@@ -733,10 +781,6 @@ export class BattleScene extends Phaser.Scene {
       text.setDepth(200);
       this.commandTexts.push(text);
     });
-
-    // 背景を配列の最後に突っ込んでおく（cleanup用）
-    // @ts-ignore
-    this.commandTexts.push(bg);
   }
 
   /**
@@ -750,17 +794,17 @@ export class BattleScene extends Phaser.Scene {
     const cmdY = uiY;
     const lineHeight = 36;
 
-    // ページによって項目数が違うためクランプ
-    const maxIndex =
-      this.commandTexts.filter((t) => t instanceof Phaser.GameObjects.Text)
-        .length - 1;
+    // 項目数チェック
+    const maxIndex = this.commandTexts.length - 1;
     if (this.selectedCommand > maxIndex) this.selectedCommand = maxIndex;
+    // マイナス対策
+    if (this.selectedCommand < 0) this.selectedCommand = 0;
 
-    // カーソル (指アイコン)
+    // カーソル
     this.cursor.setX(cmdX + 10);
     this.cursor.setY(cmdY + 20 + this.selectedCommand * lineHeight);
     this.cursor.setDepth(201);
-    this.cursor.setText("☛"); // SFC風の手の形
+    this.cursor.setText("▶");
   }
 
   /**
@@ -819,6 +863,8 @@ export class BattleScene extends Phaser.Scene {
   ): void {
     graphics.clear();
 
+    graphics.clear();
+
     const ratio = Math.max(0, Math.min(1, current / max));
     const barWidth = width * ratio;
 
@@ -844,21 +890,50 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
+   * 指定メンバーのATBバーを更新するヘルパー
+   */
+  private updateAtbBarForMember(memberIndex: number): void {
+    const margin = 10;
+    const uiY = GAME_HEIGHT - 150;
+    const gap = 4;
+    const totalWidth = GAME_WIDTH - margin * 2;
+    const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+    const partyWindowX = margin + enemyWindowWidth + gap;
+    const atbRelX = 350;
+    const atbWidth = 90;
+    const rowHeight = 32;
+
+    const member = this.partyMembers[memberIndex];
+    const rowY = uiY + 20 + memberIndex * rowHeight;
+    const atbAbsX = partyWindowX + atbRelX;
+
+    this.drawAtbBar(
+      this.partyAtbBars[memberIndex],
+      atbAbsX + 2,
+      rowY + 2, // 枠内に収める（枠はrowYから開始）
+      atbWidth - 4,
+      6,
+      member.atb,
+      member.maxAtb,
+    );
+  }
+
+  /**
    * コマンドの表示/非表示
    */
   private setCommandVisible(visible: boolean): void {
-    this.commandTexts.forEach((obj) => {
-      // TextかGraphics(背景)の可能性がある
-      obj.setVisible(visible);
+    this.commandTexts.forEach((text) => {
+      text.setVisible(visible);
     });
 
+    if (this.commandWindowGraphics) {
+      this.commandWindowGraphics.setVisible(visible);
+    }
+
     if (!visible) {
-      // 非表示時は背景を消すなどのクリーンアップが必要だが
-      // updateCommandWindowで毎回作り直す方式にしたので、ここではVisible制御のみ
-      // 完全に消す場合は destroy だが、再表示もあるのでVisible
+      // 非表示時
     } else {
-      // 表示時は背景が必要なら再作成？
-      // updateCommandWindowを呼ぶのが確実
+      // 表示時は再描画
       this.updateCommandWindow();
     }
 
@@ -869,24 +944,116 @@ export class BattleScene extends Phaser.Scene {
    * 入力のセットアップ
    */
   private setupInput(): void {
-    this.input.keyboard?.on("keydown-UP", () => this.moveCommand(-1));
-    this.input.keyboard?.on("keydown-DOWN", () => this.moveCommand(1));
-    this.input.keyboard?.on("keydown-W", () => this.moveCommand(-1));
-    this.input.keyboard?.on("keydown-S", () => this.moveCommand(1));
+    const handleKey = (key: string) => this.handleInput(key);
 
-    // 左右でページ切り替え
-    this.input.keyboard?.on("keydown-LEFT", () =>
-      this.switchCommandPage("left"),
-    );
-    this.input.keyboard?.on("keydown-RIGHT", () =>
-      this.switchCommandPage("right"),
-    );
-    this.input.keyboard?.on("keydown-A", () => this.switchCommandPage("left"));
-    this.input.keyboard?.on("keydown-D", () => this.switchCommandPage("right"));
+    this.input.keyboard?.on("keydown-UP", () => handleKey('UP'));
+    this.input.keyboard?.on("keydown-DOWN", () => handleKey('DOWN'));
+    this.input.keyboard?.on("keydown-LEFT", () => handleKey('LEFT'));
+    this.input.keyboard?.on("keydown-RIGHT", () => handleKey('RIGHT'));
+    this.input.keyboard?.on("keydown-W", () => handleKey('UP'));
+    this.input.keyboard?.on("keydown-S", () => handleKey('DOWN'));
+    this.input.keyboard?.on("keydown-A", () => handleKey('LEFT'));
+    this.input.keyboard?.on("keydown-D", () => handleKey('RIGHT'));
 
-    this.input.keyboard?.on("keydown-SPACE", () => this.selectCommand());
-    this.input.keyboard?.on("keydown-ENTER", () => this.selectCommand());
-    this.input.keyboard?.on("keydown-Z", () => this.selectCommand());
+    this.input.keyboard?.on("keydown-SPACE", () => handleKey('OK'));
+    this.input.keyboard?.on("keydown-ENTER", () => handleKey('OK'));
+    this.input.keyboard?.on("keydown-Z", () => handleKey('OK'));
+
+    this.input.keyboard?.on("keydown-ESC", () => handleKey('CANCEL'));
+    this.input.keyboard?.on("keydown-X", () => handleKey('CANCEL'));
+  }
+
+  /**
+   * 入力ハンドリング
+   */
+  private handleInput(key: string): void {
+    if (this.battleState === 'playerTurn') {
+      if (key === 'UP') this.moveCommand(-1);
+      if (key === 'DOWN') this.moveCommand(1);
+      if (key === 'LEFT') this.switchCommandPage("left");
+      if (key === 'RIGHT') this.switchCommandPage("right");
+      if (key === 'OK') this.selectCommand();
+    } else if (this.battleState === 'selectItem') {
+      if (key === 'UP') this.moveItemCursor(-1);
+      if (key === 'DOWN') this.moveItemCursor(1);
+      if (key === 'OK') this.selectItem();
+      if (key === 'CANCEL') this.cancelItemSelection();
+    } else if (this.battleState === 'selectTarget') {
+      if (key === 'UP') this.moveTargetCursor(-1);
+      if (key === 'DOWN') this.moveTargetCursor(1);
+      if (key === 'OK') this.decideTarget();
+      if (key === 'CANCEL') this.cancelTargetSelection();
+    }
+  }
+
+  // --- アイテム選択操作 ---
+
+  private moveItemCursor(direction: number): void {
+    this.selectedItemIndex += direction;
+    if (this.selectedItemIndex < 0) this.selectedItemIndex = this.availableItems.length - 1;
+    if (this.selectedItemIndex >= this.availableItems.length) this.selectedItemIndex = 0;
+    this.updateItemWindow();
+  }
+
+  private selectItem(): void {
+    const itemId = this.availableItems[this.selectedItemIndex];
+    const item = ITEMS[itemId];
+
+    this.currentAction = { type: 'item', id: itemId };
+    this.targetScope = item.targetScope || 'single_ally';
+    this.enterTargetSelection();
+
+    // アイテムウィンドウを隠す
+    this.itemWindowGraphics.setVisible(false);
+    this.itemTexts.forEach(t => t.setVisible(false));
+  }
+
+  private cancelItemSelection(): void {
+    // アイテムウィンドウ破棄
+    if (this.itemWindowGraphics) this.itemWindowGraphics.destroy();
+    this.itemTexts.forEach(t => t.destroy());
+    this.itemTexts = [];
+
+    // コマンド選択に戻る
+    this.battleState = 'playerTurn';
+    this.setCommandVisible(true);
+  }
+
+  // --- ターゲット選択操作 ---
+
+  private moveTargetCursor(direction: number): void {
+    if (this.targetScope === 'single_ally') {
+      this.selectedTargetIndex += direction;
+      // パーティ人数でループ
+      if (this.selectedTargetIndex < 0) this.selectedTargetIndex = this.partyCount - 1;
+      if (this.selectedTargetIndex >= this.partyCount) this.selectedTargetIndex = 0;
+      this.updateTargetCursor();
+    }
+    // 敵単体の場合は移動なし（MVPは敵1体）
+  }
+
+  private decideTarget(): void {
+    // 指カーソル非表示
+    this.hideTargetCursor();
+    // アクション実行へ
+    this.executeAction();
+  }
+
+  private cancelTargetSelection(): void {
+    // 指カーソル非表示
+    this.hideTargetCursor();
+    this.cursor.setVisible(false);
+
+    if (this.currentAction.type === 'item') {
+      // アイテム選択に戻る
+      this.battleState = 'selectItem';
+      this.itemWindowGraphics.setVisible(true);
+      this.itemTexts.forEach(t => t.setVisible(true));
+    } else {
+      // コマンド選択に戻る (Attack, Skill)
+      this.battleState = 'playerTurn';
+      this.setCommandVisible(true);
+    }
   }
 
   private switchCommandPage(direction: "left" | "right"): void {
@@ -955,28 +1122,44 @@ export class BattleScene extends Phaser.Scene {
 
     this.setCommandVisible(false);
 
-    // 即座に行動実行中状態へ移行（連打防止）
-    this.battleState = "executing";
+    // 行動実行中状態への移行は各メソッド（enterTargetSelectionなど）に任せる
+    // this.battleState = "executing"; 
 
     switch (command) {
       case "attack":
-        this.playerAttackAction();
+        // 攻撃：ターゲット選択へ（敵単体）
+        this.currentAction = { type: 'attack' };
+        this.targetScope = 'single_enemy';
+        this.enterTargetSelection();
         break;
       case "skill":
-        // TODO: スキル実装
-        this.showMessage("スキルはまだ使えない！");
-        this.time.delayedCall(1000, () => {
-          this.battleState = "waiting"; // 実行終了として扱う
-          this.showMessage("");
-        });
+        // スキル：MPチェック後にターゲット選択へ
+        const activeMember = this.partyMembers[this.activePartyMemberIndex];
+        const ability = ABILITIES[activeMember.abilityId];
+
+        if (!ability) {
+          this.showMessage("スキルデータがありません");
+          return;
+        }
+
+        if (activeMember.mp < ability.mpCost) {
+          this.showMessage("MPがたりない！");
+          // 画面中央に大きく表示
+          this.showSkillAnnouncement("MPがたりない！");
+          this.time.delayedCall(1000, () => this.showMessage(""));
+          // 選択状態に戻る（waitingには戻さない）
+          this.setCommandVisible(true);
+          this.battleState = 'playerTurn';
+          return;
+        }
+
+        this.currentAction = { type: 'skill', id: activeMember.abilityId };
+        this.targetScope = ability.targetScope;
+        this.enterTargetSelection();
         break;
       case "item":
-        // TODO: アイテム実装
-        this.showMessage("アイテムをもっていない！");
-        this.time.delayedCall(1000, () => {
-          this.battleState = "waiting";
-          this.showMessage("");
-        });
+        // アイテム：アイテム選択へ
+        this.enterItemSelection();
         break;
       case "defend":
         this.playerDefendAction();
@@ -985,6 +1168,142 @@ export class BattleScene extends Phaser.Scene {
         this.playerEscapeAction();
         break;
     }
+  }
+
+  /**
+   * アイテム選択モードへ遷移
+   */
+  private enterItemSelection(): void {
+    this.battleState = "selectItem";
+    this.selectedItemIndex = 0;
+
+    // アイテムウィンドウを表示
+    this.createItemWindow();
+  }
+
+  /**
+   * アイテムウィンドウ作成・表示（中央オーバーレイ）
+   */
+  private createItemWindow(): void {
+    const windowWidth = 280;
+    const windowHeight = 140;
+    const x = (GAME_WIDTH - windowWidth) / 2;
+    const y = (GAME_HEIGHT - windowHeight) / 2;
+
+    this.itemWindowGraphics = this.drawWindow(x, y, windowWidth, windowHeight);
+    this.itemWindowGraphics.setDepth(300);
+
+    // アイテムリスト描画
+    this.updateItemWindow();
+  }
+
+  /**
+   * アイテムリスト更新（1列表示、大きめフォント）
+   */
+  private updateItemWindow(): void {
+    // 古いテキストを削除
+    this.itemTexts.forEach(t => t.destroy());
+    this.itemTexts = [];
+
+    const windowWidth = 280;
+    const windowHeight = 140;
+    const startX = (GAME_WIDTH - windowWidth) / 2 + 30;
+    const startY = (GAME_HEIGHT - windowHeight) / 2 + 25;
+    const rowHeight = 32;
+
+    this.availableItems.forEach((itemId, index) => {
+      const item = ITEMS[itemId];
+      const y = startY + index * rowHeight;
+
+      const isSelected = index === this.selectedItemIndex;
+      const color = isSelected ? '#fbbf24' : '#ffffff';
+      const prefix = isSelected ? '▶ ' : '   ';
+
+      // アイテム名と個数
+      const text = this.add.text(startX, y, `${prefix}${item.name}：1`, {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: "16px",
+        color: color
+      });
+      text.setDepth(301);
+      this.itemTexts.push(text);
+    });
+  }
+
+  /**
+   * ターゲット選択モードへ遷移
+   */
+  private enterTargetSelection(): void {
+    this.battleState = "selectTarget";
+
+    // 初期ターゲット設定
+    if (this.targetScope === 'single_enemy') {
+      this.selectedTargetIndex = 0; // 敵は1体のみなので0固定
+      // 敵カーソル表示
+      this.updateTargetCursor();
+    } else if (this.targetScope === 'single_ally') {
+      this.selectedTargetIndex = this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0;
+      // 味方カーソル表示
+      this.updateTargetCursor();
+    } else if (this.targetScope === 'all_allies' || this.targetScope === 'all_enemies') {
+      // 全体対象
+      this.updateTargetCursor();
+    }
+  }
+
+  /**
+   * ターゲットカーソル更新（FF6風：対象の横に手カーソル）
+   */
+  private updateTargetCursor(): void {
+    // 既存のカーソルを非表示
+    this.cursor.setVisible(false);
+
+    if (this.targetScope === 'single_enemy') {
+      // 敵の右側に左向き手カーソルを表示（指が敵を指す）
+      if (this.enemySprite) {
+        this.targetFingerCursor.setTexture('hand-cursor');
+        this.targetFingerCursor.setFlipX(true); // 反転して左向きに
+        this.targetFingerCursor.setOrigin(0, 0.5); // 左端（指先）を基準に
+        this.targetFingerCursor.setPosition(
+          this.enemySprite.x + this.enemySprite.width / 2 + 50,
+          this.enemySprite.y
+        );
+        this.targetFingerCursor.setVisible(true);
+      }
+    } else if (this.targetScope === 'single_ally') {
+      // 選択中の味方スプライトの左側に右向き手カーソルを表示（指が味方を指す）
+      const targetSprite = this.partySprites[this.selectedTargetIndex];
+      if (targetSprite) {
+        this.targetFingerCursor.setTexture('hand-cursor');
+        this.targetFingerCursor.setFlipX(false); // 通常（右向き）
+        this.targetFingerCursor.setOrigin(1, 0.5); // 右端（指先）を基準に
+        this.targetFingerCursor.setPosition(
+          targetSprite.x - targetSprite.width / 2 - 5,
+          targetSprite.y - targetSprite.height / 2
+        );
+        this.targetFingerCursor.setVisible(true);
+      }
+    } else if (this.targetScope === 'all_allies') {
+      // 味方全体の場合は最初のキャラの左側に右向き手カーソルを表示
+      const firstSprite = this.partySprites[0];
+      if (firstSprite) {
+        this.targetFingerCursor.setTexture('hand-cursor');
+        this.targetFingerCursor.setFlipX(false);
+        this.targetFingerCursor.setOrigin(1, 0.5);
+        this.targetFingerCursor.setPosition(
+          firstSprite.x - firstSprite.width / 2 - 5,
+          firstSprite.y - firstSprite.height / 2
+        );
+        this.targetFingerCursor.setVisible(true);
+      }
+    }
+  }
+
+  /**
+   * ターゲットカーソルを非表示にする
+   */
+  private hideTargetCursor(): void {
+    this.targetFingerCursor.setVisible(false);
   }
 
   /**
@@ -1030,7 +1349,7 @@ export class BattleScene extends Phaser.Scene {
     // アクティブメンバーの防御フラグをリセット
     const activeMember =
       this.partyMembers[
-        this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0
+      this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0
       ];
     activeMember.isDefending = false;
     // アクティブメンバーの固有技名を取得してコマンドウィンドウ更新
@@ -1058,18 +1377,26 @@ export class BattleScene extends Phaser.Scene {
     // ATBを0にリセット
     activeMember.atb = 0;
 
-    // ATBバーを更新（解像度2倍）
-    const uiY = GAME_HEIGHT - 180;
-    const statusX = 230;
-    const memberHeight = 40;
-    const rowY = uiY + 10 + idx * memberHeight;
+    // ATBバーを更新（座標をcreateUI/updateと統一）
+    const margin = 10;
+    const uiY = GAME_HEIGHT - 150;
+    const gap = 4;
+    const totalWidth = GAME_WIDTH - margin * 2;
+    const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+    const partyWindowX = margin + enemyWindowWidth + gap;
+    const atbRelX = 350;
+    const atbWidth = 90;
+    const rowHeight = 32;
+
+    const rowY = uiY + 20 + idx * rowHeight;
+    const atbAbsX = partyWindowX + atbRelX;
 
     this.drawAtbBar(
       this.partyAtbBars[idx],
-      statusX + 270,
-      rowY + 4,
-      160,
-      20,
+      atbAbsX + 2,
+      rowY + 12,
+      atbWidth - 4,
+      6,
       0,
       activeMember.maxAtb,
     );
@@ -1193,7 +1520,7 @@ export class BattleScene extends Phaser.Scene {
     // アクティブメンバーの防御フラグをオン
     const activeMember =
       this.partyMembers[
-        this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0
+      this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0
       ];
     activeMember.isDefending = true;
     activeMember.atb = 0;
@@ -1213,7 +1540,7 @@ export class BattleScene extends Phaser.Scene {
     // アクティブメンバーのATBをリセット
     const activeMember =
       this.partyMembers[
-        this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0
+      this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0
       ];
     activeMember.atb = 0;
 
@@ -1425,25 +1752,291 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * HP表示を更新
+   * 特技名を画面上中央に大きく表示（FF6風）
+   */
+  private showSkillAnnouncement(skillName: string): void {
+    const announcement = this.add.text(
+      GAME_WIDTH / 2,
+      60,
+      skillName,
+      {
+        fontFamily: '"Press Start 2P", monospace',
+        fontSize: "24px",
+        color: "#ffff00",
+        stroke: "#000000",
+        strokeThickness: 4,
+        shadow: { offsetX: 2, offsetY: 2, color: "#000", blur: 0, fill: true },
+      }
+    );
+    announcement.setOrigin(0.5);
+    announcement.setDepth(500);
+    announcement.setAlpha(0);
+
+    // フェードインしてしばらく表示後フェードアウト
+    this.tweens.add({
+      targets: announcement,
+      alpha: 1,
+      y: 50,
+      duration: 200,
+      ease: "Power2",
+      onComplete: () => {
+        this.time.delayedCall(800, () => {
+          this.tweens.add({
+            targets: announcement,
+            alpha: 0,
+            y: 40,
+            duration: 300,
+            ease: "Power2",
+            onComplete: () => {
+              announcement.destroy();
+            }
+          });
+        });
+      }
+    });
+  }
+
+  /**
+   * HP/MP表示を更新
    */
   private updateHpDisplay(): void {
-    const margin = 10;
-    // createUIと同じロジック不要なら partyHpTextsにアクセスするだけだが
-    // setTextだけなのでpositionは関係ないはず。
-
-    // テキスト更新（FF6風：HP数値のみ）- 各メンバーのHPを更新
-    // テキスト更新 (Current/Max HP) Suffix space padding for alignment
+    // HP/MP テキスト更新
     for (let i = 0; i < this.partyCount; i++) {
       const member = this.partyMembers[i];
+
+      // HP更新
       const hpStr =
         `${member.hp}`.padStart(4, " ") +
         "/" +
         `${member.maxHp}`.padStart(4, " ");
       this.partyHpTexts[i].setText(hpStr);
-    }
 
-    // HPバー更新は不要（ATBバーのみ使用）
+      // MP更新
+      const mpStr = `${member.mp}/${member.maxMp}`;
+      if (this.partyMpTexts[i]) {
+        this.partyMpTexts[i].setText(mpStr);
+      }
+    }
+  }
+
+  /**
+   * アクション実行
+   */
+  private executeAction(): void {
+    this.cursor.setVisible(false);
+    this.battleState = "executing";
+
+    const action = this.currentAction;
+
+    if (action.type === 'attack') {
+      this.playerAttackAction();
+    } else if (action.type === 'skill' && action.id) {
+      this.executeSkill(action.id);
+    } else if (action.type === 'item' && action.id) {
+      this.executeItem(action.id);
+    }
+  }
+
+  /**
+   * スキル実行
+   */
+  private executeSkill(skillId: string): void {
+    const idx = this.activePartyMemberIndex;
+    const activeMember = this.partyMembers[idx];
+    const ability = ABILITIES[skillId];
+
+    if (!ability) return;
+
+    // MP消費
+    activeMember.mp -= ability.mpCost;
+
+    // ATBを0にリセット
+    activeMember.atb = 0;
+    this.updateAtbBarForMember(idx);
+
+    // メッセージ表示
+    this.showMessage(`${activeMember.name}の ${ability.name}！`);
+
+    // 画面上中央に特技名を大きく表示
+    this.showSkillAnnouncement(ability.name);
+
+    // スキル用モーション（とりあえず攻撃と同じ）
+    const sprite = this.partySprites[idx];
+    this.tweens.add({
+      targets: sprite,
+      x: sprite.x - 40,
+      duration: 200,
+      yoyo: true,
+      ease: "Power2"
+    });
+
+    // 効果発動までの遅延
+    this.time.delayedCall(800, () => {
+      if (ability.targetScope === 'single_enemy') {
+        // 敵単体攻撃
+        let multiplier = ability.power || 1.0;
+        let isCrit = ability.isCritical || false;
+        let shieldDmg = ability.shieldDamage || 0;
+
+        // 基本ダメージ計算処理を使い回すために補正
+        // ability.powerが補正値。calculateDamageは攻撃力と防御力から計算。
+        // ここでは簡易的に、ダメージ計算後に倍率をかける形にするか、攻撃力を上げるか。
+        // calculateDamageに倍率引数を追加する修正は手間なので、
+        // 既存のplayerAttackActionのロジックを流用しつつ計算する。
+
+        // 弱点チェックなどはplayerAttackActionと同じだが、スキルごとの特殊処理が必要。
+        // ここでは簡易実装として、物理ダメージスキルとして処理。
+
+        // ダメージ計算
+        let { damage, isCritical: randCrit } = this.calculateDamage(
+          activeMember.attack,
+          this.enemy.defense,
+          false,
+          1.0, // 弱点補正は別途乗るかも？スキル属性が必要だが、MVPではなし
+          this.enemy.isBroken
+        );
+
+        damage = Math.floor(damage * multiplier);
+        if (isCrit) {
+          damage = Math.floor(damage * 1.5);
+          randCrit = true; // クリティカル演出用
+        }
+
+        // シールド削減
+        let isShieldBrokenNow = false;
+        if (shieldDmg > 0 && !this.enemy.isBroken) {
+          this.enemy.shield = Math.max(0, this.enemy.shield - shieldDmg);
+          if (this.enemy.shield === 0) {
+            this.enemy.isBroken = true;
+            this.enemy.breakStartTurn = this.turnCount;
+            isShieldBrokenNow = true;
+          }
+        }
+
+        this.enemy.hp -= damage;
+
+        // 演出
+        this.showDamagePopup(this.enemySprite.x, this.enemySprite.y - 60, damage, randCrit);
+        if (isShieldBrokenNow) this.showBreakEffect();
+        this.updateEnemyStatusDisplay();
+
+        this.showMessage(`${this.enemy.name}に${damage}のダメージ！`);
+
+      } else if (ability.targetScope === 'all_allies') {
+        // 味方全体回復
+        const healAmount = ability.power || 0;
+
+        this.partyMembers.forEach((member, i) => {
+          if (member.hp > 0) { // 生存者のみ
+            const oldHp = member.hp;
+            member.hp = Math.min(member.maxHp, member.hp + healAmount);
+            const healed = member.hp - oldHp;
+
+            // 回復ポップアップ
+            const sprite = this.partySprites[i];
+            this.showDamagePopup(sprite.x, sprite.y - 40, healed, false);
+
+            // 回復エフェクト（緑色に点滅）
+            sprite.setTint(0x4ade80);
+            this.time.delayedCall(300, () => sprite.clearTint());
+          }
+        });
+
+        this.showMessage("味方全体のHPが回復した！");
+      }
+
+      this.updateHpDisplay();
+
+      this.time.delayedCall(1500, () => {
+        this.endTurnLogic();
+      });
+    });
+  }
+
+  /**
+   * アイテム実行
+   */
+  private executeItem(itemId: string): void {
+    const idx = this.activePartyMemberIndex;
+    const activeMember = this.partyMembers[idx];
+    const item = ITEMS[itemId];
+
+    if (!item) return;
+
+    // ATBを0にリセット
+    activeMember.atb = 0;
+    this.updateAtbBarForMember(idx);
+
+    this.showMessage(`${activeMember.name}は ${item.name}をつかった！`);
+
+    // アイテム使用アニメーション
+    const sprite = this.partySprites[idx];
+    this.tweens.add({
+      targets: sprite,
+      y: sprite.y - 10,
+      duration: 100,
+      yoyo: true,
+      repeat: 1
+    });
+
+    this.time.delayedCall(800, () => {
+      // 効果発動
+      if (item.targetScope === 'single_ally') {
+        const targetIdx = this.selectedTargetIndex;
+        const targetMember = this.partyMembers[targetIdx];
+        const targetSprite = this.partySprites[targetIdx];
+
+        if (item.effectType === 'heal_hp') {
+          const healAmount = item.effectValue || 0;
+          const oldHp = targetMember.hp;
+          targetMember.hp = Math.min(targetMember.maxHp, targetMember.hp + healAmount);
+          const healed = targetMember.hp - oldHp;
+
+          // 回復演出
+          this.showDamagePopup(targetSprite.x, targetSprite.y - 40, healed, false);
+          targetSprite.setTint(0x4ade80); // 緑
+          this.time.delayedCall(300, () => targetSprite.clearTint());
+
+          this.showMessage(`${targetMember.name}のHPが${healed}かいふくした！`);
+
+        } else if (item.effectType === 'heal_mp') {
+          const healAmount = item.effectValue || 0;
+          targetMember.mp = Math.min(targetMember.maxMp, targetMember.mp + healAmount);
+
+          // MP回復演出
+          this.add.text(targetSprite.x, targetSprite.y - 60, `MP+${healAmount}`, {
+            fontFamily: '"Press Start 2P"', fontSize: "16px", color: "#60a5fa", stroke: "#000", strokeThickness: 4
+          }).setOrigin(0.5).setDepth(200);
+
+          targetSprite.setTint(0x60a5fa); // 青
+          this.time.delayedCall(300, () => targetSprite.clearTint());
+
+          this.showMessage(`${targetMember.name}のMPが${healAmount}かいふくした！`);
+        }
+      }
+
+      this.updateHpDisplay();
+
+      this.time.delayedCall(1500, () => {
+        this.endTurnLogic();
+      });
+    });
+  }
+
+  /**
+   * ターン終了共通処理
+   */
+  private endTurnLogic(): void {
+    if (this.enemy.hp <= 0) {
+      this.victory();
+    } else {
+      // waiting状態に戻る
+      this.battleState = "waiting";
+      this.showMessage("");
+      // ステートリセット
+      this.currentAction = { type: 'attack' }; // default
+      this.targetScope = 'single_enemy';
+    }
   }
 
   /**
@@ -1705,13 +2298,9 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    // ウェイトモード: プレイヤーターン中またはアクション実行中はATB停止
-    if (this.battleState === "playerTurn" || this.battleState === "executing") {
-      return;
-    }
-
-    // 敵ターン中もATB停止
-    if (this.battleState === "enemyTurn") {
+    // アクション実行中と敵ターン中のみATB停止
+    // playerTurn、selectTarget、selectItem中もATBは進む（アクティブモード）
+    if (this.battleState === "executing" || this.battleState === "enemyTurn") {
       return;
     }
 
@@ -1723,7 +2312,7 @@ export class BattleScene extends Phaser.Scene {
     const enemyWindowWidth = Math.floor(totalWidth * 0.35);
     const partyWindowX = margin + enemyWindowWidth + gap;
     const atbRelX = 350;
-    const atbWidth = 100;
+    const atbWidth = 90; // createUIと同じ値に修正
     const rowHeight = 32;
 
     // === パーティメンバーのATB回復 ===
@@ -1742,20 +2331,35 @@ export class BattleScene extends Phaser.Scene {
         const atbRecovery =
           this.ATB_BASE_SPEED + member.speed / this.ATB_SPEED_DIVISOR;
         member.atb = Math.min(member.maxAtb, member.atb + atbRecovery);
+      }
 
-        // ATBバーを更新
-        const rowY = uiY + 20 + i * rowHeight;
-        const atbAbsX = partyWindowX + atbRelX;
+      // ATBバーを更新（満タンでも常に描画）
+      const rowY = uiY + 20 + i * rowHeight;
+      const atbAbsX = partyWindowX + atbRelX;
 
-        this.drawAtbBar(
-          this.partyAtbBars[i],
-          atbAbsX + 2,
-          rowY + 12,
-          atbWidth - 4,
-          6,
-          member.atb,
-          member.maxAtb,
-        );
+      this.drawAtbBar(
+        this.partyAtbBars[i],
+        atbAbsX + 2,
+        rowY + 2, // 枠内に収める
+        atbWidth - 4,
+        6,
+        member.atb,
+        member.maxAtb,
+      );
+
+      // ATB満タン矢印の更新（キャラの上に下向き矢印）
+      if (this.readyArrows[i]) {
+        const sprite = this.partySprites[i];
+        if (sprite && member.hp > 0 && member.atb >= member.maxAtb) {
+          // キャラの頭上に下向き矢印を表示
+          this.readyArrows[i].setPosition(
+            sprite.x,
+            sprite.y - sprite.height - 50
+          );
+          this.readyArrows[i].setVisible(true);
+        } else {
+          this.readyArrows[i].setVisible(false);
+        }
       }
     }
 
@@ -1770,6 +2374,16 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // === ターン開始判定 ===
+    // 既にコマンド選択中やターゲット選択中の場合はスキップ
+    if (
+      this.battleState === "playerTurn" ||
+      this.battleState === "selectTarget" ||
+      this.battleState === "selectItem"
+    ) {
+      // 既に行動中のため、新たなターン開始はしない
+      return;
+    }
+
     // パーティメンバーでATBが満タンのキャラがいればプレイヤーターン
     const readyMemberIndex = this.partyMembers.findIndex(
       (m, i) => m.hp > 0 && m.atb >= m.maxAtb,

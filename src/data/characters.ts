@@ -9,6 +9,7 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
         battleSpriteKey: 'player-battle',
         defaultWeapon: 'sword',
         specialCommandName: 'ぜんりょく',
+        abilityId: 'zenryoku',
         initialStats: {
             hp: 100,
             maxHp: 100,
@@ -28,6 +29,7 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
         battleSpriteKey: 'daichan-battle',
         defaultWeapon: 'axe',
         specialCommandName: 'たたきわる',
+        abilityId: 'tatakiwaru',
         initialStats: {
             hp: 80,
             maxHp: 80,
@@ -47,6 +49,7 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
         battleSpriteKey: 'shinichi-battle',
         defaultWeapon: 'bow',
         specialCommandName: 'ねらう',
+        abilityId: 'nerau',
         initialStats: {
             hp: 90,
             maxHp: 90,
@@ -66,6 +69,7 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
         battleSpriteKey: 'taisa-battle',
         defaultWeapon: 'staff',
         specialCommandName: 'いのる',
+        abilityId: 'inoru',
         initialStats: {
             hp: 120,
             maxHp: 120,

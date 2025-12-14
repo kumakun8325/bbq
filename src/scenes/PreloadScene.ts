@@ -112,6 +112,61 @@ export class PreloadScene extends Phaser.Scene {
 
         // バトル背景用のプレースホルダー
         this.createPlaceholderTexture('battle-bg', 480, 320, 0x1e3a5f);
+
+        // FF6風カーソルをシンプルなドット絵で生成
+        this.createSimpleCursors();
+    }
+
+    /**
+     * シンプルなカーソルテクスチャを生成
+     */
+    private createSimpleCursors(): void {
+        // 下向き矢印（ATB満タン表示用）- 白い逆三角形、黒縁
+        const arrowG = this.make.graphics({ x: 0, y: 0 });
+        const arrowSize = 16;
+
+        // 黒い輪郭
+        arrowG.fillStyle(0x000000, 1);
+        arrowG.fillTriangle(
+            arrowSize / 2, arrowSize - 2,  // 下の頂点
+            2, 2,                           // 左上
+            arrowSize - 2, 2                // 右上
+        );
+
+        // 白い内側
+        arrowG.fillStyle(0xffffff, 1);
+        arrowG.fillTriangle(
+            arrowSize / 2, arrowSize - 5,  // 下の頂点
+            5, 5,                           // 左上
+            arrowSize - 5, 5                // 右上
+        );
+
+        arrowG.generateTexture('arrow-down', arrowSize, arrowSize);
+        arrowG.destroy();
+
+        // 右向き手カーソル - シンプルな矢印型（指を模したもの）
+        const handG = this.make.graphics({ x: 0, y: 0 });
+        const handWidth = 20;
+        const handHeight = 16;
+
+        // 黒い輪郭
+        handG.fillStyle(0x000000, 1);
+        handG.fillTriangle(
+            handWidth - 2, handHeight / 2,  // 右の頂点（指先）
+            2, 2,                             // 左上
+            2, handHeight - 2                 // 左下
+        );
+
+        // 白い内側
+        handG.fillStyle(0xffffff, 1);
+        handG.fillTriangle(
+            handWidth - 5, handHeight / 2,  // 右の頂点（指先）
+            5, 5,                             // 左上
+            5, handHeight - 5                 // 左下
+        );
+
+        handG.generateTexture('hand-cursor', handWidth, handHeight);
+        handG.destroy();
     }
 
     /**
@@ -283,6 +338,15 @@ export class PreloadScene extends Phaser.Scene {
 
         graphics.generateTexture('player', frameWidth * framesPerDirection, frameHeight * directions);
         graphics.destroy();
+
+        // テクスチャにフレーム定義を追加（これがないと画像全体が1フレームとして扱われてしまう）
+        const texture = this.textures.get('player');
+        for (let dir = 0; dir < directions; dir++) {
+            for (let frame = 0; frame < framesPerDirection; frame++) {
+                const index = dir * framesPerDirection + frame;
+                texture.add(index, 0, frame * frameWidth, dir * frameHeight, frameWidth, frameHeight);
+            }
+        }
     }
 
     /**

@@ -74,6 +74,11 @@ module.exports = (env, argv) => {
                             ignore: ['**/index.html']
                         },
                         noErrorOnMissing: true
+                    },
+                    {
+                        from: 'assets',
+                        to: 'assets',
+                        noErrorOnMissing: true
                     }
                 ]
             })
