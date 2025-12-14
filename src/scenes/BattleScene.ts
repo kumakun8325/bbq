@@ -546,7 +546,7 @@ export class BattleScene extends Phaser.Scene {
         // 各カラムの相対X位置
         const nameRelX = 20;
         const hpRelX = 160;
-        const atbRelX = 300;
+        const atbRelX = 350; // HPと被らないように調整 (300 -> 350)
         const atbWidth = 100;
 
         for (let i = 0; i < this.partyCount; i++) {
@@ -678,25 +678,25 @@ export class BattleScene extends Phaser.Scene {
         // 簡易的にここで背景Graphicsも管理するか、固定位置ならcreateUIで作る
         // ご要望の動画を見ると、左下のステータスウィンドウの上に被さるようにコマンドウィンドウが出る
 
-        // コマンドウィンドウ位置：アクティブキャラの頭上
-        // ポップアップ位置計算
-        let cmdX = 20;
-        let cmdY = GAME_HEIGHT - 280;
+        // コマンドウィンドウ位置：左下の敵名ウィンドウの上に表示
+        // 固定位置にする
+        const margin = 10;
+        const uiY = GAME_HEIGHT - 150;
 
-        if (this.activePartyMemberIndex >= 0 && this.partySprites[this.activePartyMemberIndex]) {
-            const sprite = this.partySprites[this.activePartyMemberIndex];
-            // キャラクターの左上あたりにポップアップ
-            // スプライトはスケール4倍されているため考慮
-            cmdX = sprite.x - 100;
-            cmdY = sprite.y - 100;
+        // 敵名ウィンドウと同じ位置・サイズ感で表示
+        // cmdYは少し上にずらすか、ぴったり合わせるか。動画ではぴったり合っているように見える
+        let cmdX = margin;
+        // コマンドの数に応じて高さが変わるが、下底を合わせるのが一般的だが、
+        // FF6は上底合わせで下に伸びていく
+        let cmdY = uiY;
 
-            // 画面外にはみ出ないように調整
-            if (cmdX < 10) cmdX = 10;
-            if (cmdY < 10) cmdY = 10;
-            if (cmdX + 160 > GAME_WIDTH) cmdX = GAME_WIDTH - 170;
-        }
+        // 幅は敵ウィンドウ幅に合わせるか、固定にするか
+        // 敵ウィンドウ幅は createUI で計算しているが、ここでは再計算が必要
+        // 敵ウィンドウ幅 = (GAME_WIDTH - 20) * 0.35
+        const totalWidth = GAME_WIDTH - 20;
+        const enemyWindowWidth = Math.floor(totalWidth * 0.35);
 
-        const cmdWidth = 160;
+        const cmdWidth = enemyWindowWidth;
 
         // 背景（毎回クリアするのは非効率だが、簡略化のため）
         // TODO: コマンドウィンドウ背景をメンバ変数に持って管理する
@@ -756,20 +756,11 @@ export class BattleScene extends Phaser.Scene {
      * コマンドカーソル位置更新
      */
     private updateCursorPosition(): void {
-        let cmdX = 20;
-        let cmdY = GAME_HEIGHT - 280;
+        const margin = 10;
+        const uiY = GAME_HEIGHT - 150;
 
-        // updateCommandWindowと同じロジックで位置を特定
-        if (this.activePartyMemberIndex >= 0 && this.partySprites[this.activePartyMemberIndex]) {
-            const sprite = this.partySprites[this.activePartyMemberIndex];
-            cmdX = sprite.x - 100;
-            cmdY = sprite.y - 100;
-
-            if (cmdX < 10) cmdX = 10;
-            if (cmdY < 10) cmdY = 10;
-            if (cmdX + 160 > GAME_WIDTH) cmdX = GAME_WIDTH - 170;
-        }
-
+        const cmdX = margin;
+        const cmdY = uiY;
         const lineHeight = 36;
 
         // ページによって項目数が違うためクランプ
