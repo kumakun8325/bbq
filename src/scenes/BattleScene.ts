@@ -10,7 +10,21 @@ import { GAME_WIDTH, GAME_HEIGHT } from '@/config/gameConfig';
 type BattleCommand = 'attack' | 'defend' | 'escape';
 
 /** バトルステート */
-type BattleState = 'start' | 'playerTurn' | 'enemyTurn' | 'victory' | 'defeat' | 'escaped';
+type BattleState = 'start' | 'playerTurn' | 'enemyTurn' | 'victory' | 'defeat' | 'escaped' | 'waiting';
+
+/** パーティメンバーデータ */
+interface PartyMemberData {
+    name: string;
+    hp: number;
+    maxHp: number;
+    attack: number;
+    defense: number;
+    speed: number;         // ATB回復速度に影響
+    atb: number;
+    maxAtb: number;
+    spriteKey: string;
+    isDefending: boolean;  // 防御中フラグ
+}
 
 /** 敵データ */
 interface EnemyData {
@@ -19,10 +33,13 @@ interface EnemyData {
     maxHp: number;
     attack: number;
     defense: number;
+    speed: number;         // ATB回復速度に影響
+    atb: number;           // 敵もATBを持つ
+    maxAtb: number;
     color: number;
     width: number;
     height: number;
-    spriteKey: string;  // スプライトのテクスチャキー
+    spriteKey: string;
 }
 
 /** 敵データベース */
@@ -33,6 +50,9 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         maxHp: 30,
         attack: 5,
         defense: 2,
+        speed: 20,           // 低速な敵
+        atb: 0,
+        maxAtb: 100,
         color: 0xe94560,
         width: 32,
         height: 32,
@@ -44,6 +64,9 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         maxHp: 20,
         attack: 8,
         defense: 1,
+        speed: 60,           // 素早い敵
+        atb: 0,
+        maxAtb: 100,
         color: 0x8b5cf6,
         width: 32,
         height: 32,
@@ -55,6 +78,9 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         maxHp: 40,
         attack: 10,
         defense: 3,
+        speed: 35,           // 中速な敵
+        atb: 0,
+        maxAtb: 100,
         color: 0xf59e0b,
         width: 32,
         height: 32,
@@ -74,21 +100,20 @@ export class BattleScene extends Phaser.Scene {
     private partyCount: number = 4;  // FF6風4人パーティ
 
     // パーティメンバーデータ（ATBゲージ含む）
-    private partyMembers = [
-        { name: 'とりくん', hp: 100, maxHp: 100, atb: 100, maxAtb: 100, spriteKey: 'player-battle' },
-        { name: 'だいちゃん', hp: 80, maxHp: 80, atb: 70, maxAtb: 100, spriteKey: 'daichan-battle' },
-        { name: 'しんいち', hp: 90, maxHp: 90, atb: 50, maxAtb: 100, spriteKey: 'shinichi-battle' },
-        { name: 'たいさ', hp: 120, maxHp: 120, atb: 30, maxAtb: 100, spriteKey: 'taisa-battle' }
+    // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed) * speedModifier
+    private partyMembers: PartyMemberData[] = [
+        { name: 'とりくん', hp: 100, maxHp: 100, attack: 15, defense: 5, speed: 40, atb: 80, maxAtb: 100, spriteKey: 'player-battle', isDefending: false },
+        { name: 'だいちゃん', hp: 80, maxHp: 80, attack: 20, defense: 3, speed: 50, atb: 60, maxAtb: 100, spriteKey: 'daichan-battle', isDefending: false },
+        { name: 'しんいち', hp: 90, maxHp: 90, attack: 12, defense: 8, speed: 30, atb: 40, maxAtb: 100, spriteKey: 'shinichi-battle', isDefending: false },
+        { name: 'たいさ', hp: 120, maxHp: 120, attack: 18, defense: 6, speed: 25, atb: 20, maxAtb: 100, spriteKey: 'taisa-battle', isDefending: false }
     ];
 
-    // 現在行動可能なメンバーのインデックス
-    private activePartyMemberIndex: number = 0;
+    // 現在行動可能なメンバーのインデックス（-1 = 誰も行動可能でない）
+    private activePartyMemberIndex: number = -1;
 
-    // プレイヤーステータス（1人目をメインとして使用）
-    private playerHp: number = 100;
-    private playerMaxHp: number = 100;
-    private playerAttack: number = 15;
-    private playerDefense: number = 5;
+    // ATB設定（設計書3.5.2準拠）
+    private readonly ATB_BASE_SPEED = 0.3;   // 基本回復速度
+    private readonly ATB_SPEED_DIVISOR = 100; // スピード値の除数
 
     // バトル状態
     private battleState: BattleState = 'start';
@@ -101,7 +126,6 @@ export class BattleScene extends Phaser.Scene {
     private playerHpText!: Phaser.GameObjects.Text;
     private enemyHpText!: Phaser.GameObjects.Text;
     private cursor!: Phaser.GameObjects.Text;
-    private isDefending: boolean = false;
 
     // パーティメンバーのHP表示（4人分）
     private partyHpTexts: Phaser.GameObjects.Text[] = [];
@@ -126,7 +150,14 @@ export class BattleScene extends Phaser.Scene {
         // ステータスリセット
         this.battleState = 'start';
         this.selectedCommand = 0;
-        this.isDefending = false;
+        this.activePartyMemberIndex = -1;
+
+        // 設計書3.5.5: 通常エンカウントのATB初期値（ランダム30-70）
+        for (const member of this.partyMembers) {
+            member.atb = Phaser.Math.Between(30, 70);
+            member.isDefending = false;
+        }
+        this.enemy.atb = Phaser.Math.Between(30, 70);
     }
 
     create(): void {
@@ -144,7 +175,9 @@ export class BattleScene extends Phaser.Scene {
         this.time.delayedCall(500, () => {
             this.showMessage(`${this.enemy.name}があらわれた！`);
             this.time.delayedCall(1500, () => {
-                this.startPlayerTurn();
+                // waiting状態に遷移し、ATBシステムでターンを管理
+                this.battleState = 'waiting';
+                this.showMessage('');
             });
         });
     }
@@ -184,8 +217,8 @@ export class BattleScene extends Phaser.Scene {
             this.enemy.spriteKey
         );
 
-        // スプライトのスケール（FF6オリジナル風）
-        this.enemySprite.setScale(2);
+        // スプライトのスケール（解像度2倍対応：4倍）
+        this.enemySprite.setScale(4);
 
         // アイドルアニメーションを再生
         const animKey = `${this.enemy.spriteKey}-idle`;
@@ -193,8 +226,8 @@ export class BattleScene extends Phaser.Scene {
             this.enemySprite.play(animKey);
         }
 
-        // 軽い浮遊アニメーション（コウモリはより大きく）
-        const floatAmount = this.enemyType === 'bat' ? 8 : 3;
+        // 軽い浮遊アニメーション（コウモリはより大きく）（解像度2倍）
+        const floatAmount = this.enemyType === 'bat' ? 16 : 6;
         this.tweens.add({
             targets: this.enemySprite,
             y: this.enemySprite.y - floatAmount,
@@ -207,19 +240,19 @@ export class BattleScene extends Phaser.Scene {
 
     /**
      * パーティスプライトを作成（FF6風：右側に斜め配置）
-     * 1人目が右上で一番手前、4人目が左下で一番奥に並ぶ
+     * 1人目が左上で奥、4人目が右下で手前に並ぶ（右下方向への斜め配置）
      */
     private createPartySprites(): void {
         // パーティスプライトをクリア
         this.partySprites.forEach(sprite => sprite.destroy());
         this.partySprites = [];
 
-        // パーティメンバーの配置（最大4人）
-        // FF6風：1人目が右上で手前、4人目が左下で奥
-        const baseX = GAME_WIDTH * 0.82;  // 右側
+        // パーティメンバーの配置（最大4人）（解像度2倍対応）
+        // FF6風：1人目が左上で奥、4人目が右下で手前（右下方向への斜め配置）
+        const baseX = GAME_WIDTH * 0.62;  // 開始位置（左寄り）
         const baseY = GAME_HEIGHT * 0.12;  // 開始y位置（上寄り）
-        const offsetX = -14;  // 各キャラの横オフセット（左へ）
-        const offsetY = 32;   // 各キャラの縦オフセット（下へ、重なる程度）
+        const offsetX = 28;   // 各キャラの横オフセット（右へ）（解像度2倍）
+        const offsetY = 64;   // 各キャラの縦オフセット（下へ）（解像度2倍）
 
         for (let i = 0; i < this.partyCount; i++) {
             const x = baseX + (offsetX * i);
@@ -228,19 +261,19 @@ export class BattleScene extends Phaser.Scene {
             // クラスプロパティのpartyMembersから取得
             const member = this.partyMembers[i];
             const sprite = this.add.sprite(x, y, member.spriteKey);
-            sprite.setScale(2);  // FF6オリジナルスケール
+            sprite.setScale(4);  // 解像度2倍対応：4倍
 
-            // 深度を設定（1人目=index0が手前=depth高、4人目=index3が奥=depth低）
-            // 大きな値で明確に差をつける
-            sprite.setDepth(100 - (i * 10));  // 100, 90, 80, 70
+            // 深度を設定（1人目=index0が奥=depth低、4人目=index3が手前=depth高）
+            // 下にいるキャラほど手前に表示
+            sprite.setDepth(70 + (i * 10));  // 70, 80, 90, 100
 
             // 待機ポーズ（フレーム0）- 左向きで敵を見据える
             sprite.setFrame(0);
 
-            // 待機モーション（軽い揺れ）
+            // 待機モーション（軽い揺れ）（解像度2倍）
             this.tweens.add({
                 targets: sprite,
-                y: y - 2,
+                y: y - 4,
                 duration: 800 + i * 100,
                 yoyo: true,
                 repeat: -1,
@@ -257,24 +290,24 @@ export class BattleScene extends Phaser.Scene {
      * - 右: パーティ4人分のステータス
      */
     private createUI(): void {
-        const uiY = GAME_HEIGHT - 90;  // UI開始Y位置
+        const uiY = GAME_HEIGHT - 180;  // UI開始Y位置（解像度2倍）
 
         // ===== 左側：敵名 + コマンドメニュー =====
         // 敵名ウィンドウ
         const enemyNameBg = this.add.graphics();
         enemyNameBg.fillStyle(0x000044, 0.9);
-        enemyNameBg.fillRect(5, uiY, 100, 22);
-        enemyNameBg.lineStyle(2, 0x4444aa, 1);
-        enemyNameBg.strokeRect(5, uiY, 100, 22);
+        enemyNameBg.fillRect(10, uiY, 200, 44);
+        enemyNameBg.lineStyle(3, 0x4444aa, 1);
+        enemyNameBg.strokeRect(10, uiY, 200, 44);
 
         // 敵名テキスト
         this.enemyHpText = this.add.text(
-            10,
-            uiY + 4,
+            20,
+            uiY + 8,
             this.enemy.name,
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '8px',
+                fontSize: '16px',
                 color: '#ffffff'
             }
         );
@@ -282,20 +315,20 @@ export class BattleScene extends Phaser.Scene {
         // コマンドウィンドウの背景
         const commandBg = this.add.graphics();
         commandBg.fillStyle(0x000044, 0.9);
-        commandBg.fillRect(5, uiY + 25, 100, 60);
-        commandBg.lineStyle(2, 0x4444aa, 1);
-        commandBg.strokeRect(5, uiY + 25, 100, 60);
+        commandBg.fillRect(10, uiY + 50, 200, 120);
+        commandBg.lineStyle(3, 0x4444aa, 1);
+        commandBg.strokeRect(10, uiY + 50, 200, 120);
 
         // コマンドテキスト
         const commandLabels = ['たたかう', 'ぼうぎょ', 'にげる'];
         commandLabels.forEach((label, index) => {
             const text = this.add.text(
-                30,
-                uiY + 32 + index * 18,
+                60,
+                uiY + 64 + index * 36,
                 label,
                 {
                     fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '8px',
+                    fontSize: '16px',
                     color: '#ffffff'
                 }
             );
@@ -304,26 +337,26 @@ export class BattleScene extends Phaser.Scene {
 
         // カーソル
         this.cursor = this.add.text(
-            15,
-            uiY + 32,
+            30,
+            uiY + 64,
             '▶',
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '8px',
+                fontSize: '16px',
                 color: '#ffffff'
             }
         );
 
         // ===== 右側：パーティ4人分のステータス =====
-        const statusX = 115;
-        const statusWidth = GAME_WIDTH - 120;
-        const memberHeight = 20;  // 各メンバーの高さ
+        const statusX = 230;
+        const statusWidth = GAME_WIDTH - 240;
+        const memberHeight = 40;  // 各メンバーの高さ（解像度2倍）
 
         const statusBg = this.add.graphics();
         statusBg.fillStyle(0x000044, 0.9);
-        statusBg.fillRect(statusX, uiY, statusWidth, 85);
-        statusBg.lineStyle(2, 0x4444aa, 1);
-        statusBg.strokeRect(statusX, uiY, statusWidth, 85);
+        statusBg.fillRect(statusX, uiY, statusWidth, 170);
+        statusBg.lineStyle(3, 0x4444aa, 1);
+        statusBg.strokeRect(statusX, uiY, statusWidth, 170);
 
         // 4人分のステータスを表示
         this.partyHpTexts = [];
@@ -331,28 +364,28 @@ export class BattleScene extends Phaser.Scene {
 
         for (let i = 0; i < this.partyCount; i++) {
             const member = this.partyMembers[i];
-            const rowY = uiY + 5 + (i * memberHeight);
+            const rowY = uiY + 10 + (i * memberHeight);
 
             // メンバー名
             this.add.text(
-                statusX + 5,
+                statusX + 10,
                 rowY,
                 member.name,
                 {
                     fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '7px',
+                    fontSize: '14px',
                     color: '#ffffff'
                 }
             );
 
             // HP数値
             const hpText = this.add.text(
-                statusX + 130,
+                statusX + 260,
                 rowY,
                 `${member.hp}`,
                 {
                     fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '7px',
+                    fontSize: '14px',
                     color: '#4ade80'
                 }
             );
@@ -362,11 +395,11 @@ export class BattleScene extends Phaser.Scene {
             // ATBゲージ背景
             const barBg = this.add.graphics();
             barBg.fillStyle(0x333333, 1);
-            barBg.fillRect(statusX + 135, rowY + 2, 80, 10);
+            barBg.fillRect(statusX + 270, rowY + 4, 160, 20);
 
             // ATBゲージ（緑色で現在値を表示）
             const atbBar = this.add.graphics();
-            this.drawAtbBar(atbBar, statusX + 135, rowY + 2, 80, 10, member.atb, member.maxAtb);
+            this.drawAtbBar(atbBar, statusX + 270, rowY + 4, 160, 20, member.atb, member.maxAtb);
             this.partyAtbBars.push(atbBar);
         }
 
@@ -381,15 +414,15 @@ export class BattleScene extends Phaser.Scene {
 
         // メッセージテキスト（ステータスウィンドウ外、上部）
         this.messageText = this.add.text(
-            statusX + 5,
-            uiY - 20,
+            statusX + 10,
+            uiY - 40,
             '',
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '8px',
+                fontSize: '16px',
                 color: '#ffffff',
                 backgroundColor: '#000044',
-                padding: { x: 5, y: 3 }
+                padding: { x: 10, y: 6 }
             }
         );
 
@@ -503,9 +536,9 @@ export class BattleScene extends Phaser.Scene {
             this.selectedCommand = 0;
         }
 
-        // FF6風UIのカーソル位置
-        const uiY = GAME_HEIGHT - 90;
-        this.cursor.setY(uiY + 32 + this.selectedCommand * 18);
+        // FF6風UIのカーソル位置（解像度2倍）
+        const uiY = GAME_HEIGHT - 180;
+        this.cursor.setY(uiY + 64 + this.selectedCommand * 36);
     }
 
     /**
@@ -535,68 +568,73 @@ export class BattleScene extends Phaser.Scene {
      */
     private startPlayerTurn(): void {
         this.battleState = 'playerTurn';
-        this.isDefending = false;
-        this.showMessage('コマンド？');
+        // アクティブメンバーの防御フラグをリセット
+        const activeMember = this.partyMembers[this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0];
+        activeMember.isDefending = false;
+        this.showMessage(`${activeMember.name}のターン！`);
         this.setCommandVisible(true);
         this.selectedCommand = 0;
-        // FF6風UIのカーソル位置
-        const uiY = GAME_HEIGHT - 90;
-        this.cursor.setY(uiY + 32);
+        // FF6風UIのカーソル位置（解像度2倍）
+        const uiY = GAME_HEIGHT - 180;
+        this.cursor.setY(uiY + 64);
     }
 
     /**
      * プレイヤーの攻撃
      */
     private playerAttackAction(): void {
-        // ATBを0にリセット（1人目）
-        this.partyMembers[0].atb = 0;
+        const idx = this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0;
+        const activeMember = this.partyMembers[idx];
 
-        // ATBバーを更新
-        const uiY = GAME_HEIGHT - 90;
-        const statusX = 115;
-        const memberHeight = 20;
+        // ATBを0にリセット
+        activeMember.atb = 0;
+
+        // ATBバーを更新（解像度2倍）
+        const uiY = GAME_HEIGHT - 180;
+        const statusX = 230;
+        const memberHeight = 40;
+        const rowY = uiY + 10 + (idx * memberHeight);
+
         this.drawAtbBar(
-            this.partyAtbBars[0],
-            statusX + 135,
-            uiY + 5 + 2,
-            80,
-            10,
+            this.partyAtbBars[idx],
+            statusX + 270,
+            rowY + 4,
+            160,
+            20,
             0,
-            100
+            activeMember.maxAtb
         );
 
-        // ダメージ計算（改善版）
+        // ダメージ計算（改善版）- アクティブなメンバーの攻撃力を使用
         const { damage, isCritical } = this.calculateDamage(
-            this.playerAttack,
+            activeMember.attack,
             this.enemy.defense,
             false
         );
 
         // パーティメンバーを攻撃ポーズに切り替え
-        this.partySprites.forEach((sprite, index) => {
-            if (index === 0) {  // 1人目だけ攻撃モーション
-                // 攻撃ポーズに変更
-                sprite.setFrame(1);
+        const sprite = this.partySprites[idx];
 
-                // 前に踏み込むアニメーション
-                const originalX = sprite.x;
+        // 攻撃ポーズに変更
+        sprite.setFrame(1);
+
+        // 前に踏み込むアニメーション
+        const originalX = sprite.x;
+        this.tweens.add({
+            targets: sprite,
+            x: sprite.x - 60,  // 敵に向かって踏み込む（解像度2倍）
+            duration: 150,
+            ease: 'Power2',
+            onComplete: () => {
+                // 元の位置に戻る
                 this.tweens.add({
                     targets: sprite,
-                    x: sprite.x - 30,  // 敵に向かって踏み込む
-                    duration: 150,
+                    x: originalX,
+                    duration: 200,
                     ease: 'Power2',
                     onComplete: () => {
-                        // 元の位置に戻る
-                        this.tweens.add({
-                            targets: sprite,
-                            x: originalX,
-                            duration: 200,
-                            ease: 'Power2',
-                            onComplete: () => {
-                                // 待機ポーズに戻す
-                                sprite.setFrame(0);
-                            }
-                        });
+                        // 待機ポーズに戻す
+                        sprite.setFrame(0);
                     }
                 });
             }
@@ -608,7 +646,7 @@ export class BattleScene extends Phaser.Scene {
         this.time.delayedCall(150, () => {
             this.tweens.add({
                 targets: this.enemySprite,
-                x: this.enemySprite.x + (isCritical ? 20 : 10),
+                x: this.enemySprite.x + (isCritical ? 40 : 20),  // 解像度2倍
                 duration: isCritical ? 30 : 50,
                 yoyo: true,
                 repeat: isCritical ? 5 : 3
@@ -617,7 +655,7 @@ export class BattleScene extends Phaser.Scene {
             // ダメージポップアップ
             this.showDamagePopup(
                 this.enemySprite.x,
-                this.enemySprite.y - 30,
+                this.enemySprite.y - 60,  // 解像度2倍
                 damage,
                 isCritical
             );
@@ -632,7 +670,9 @@ export class BattleScene extends Phaser.Scene {
             if (this.enemy.hp <= 0) {
                 this.victory();
             } else {
-                this.startEnemyTurn();
+                // waiting状態に戻り、ATBで次のターンを判定
+                this.battleState = 'waiting';
+                this.showMessage('');
             }
         });
     }
@@ -641,11 +681,16 @@ export class BattleScene extends Phaser.Scene {
      * プレイヤーの防御
      */
     private playerDefendAction(): void {
-        this.isDefending = true;
-        this.showMessage('みをまもっている...');
+        // アクティブメンバーの防御フラグをオン
+        const activeMember = this.partyMembers[this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0];
+        activeMember.isDefending = true;
+        activeMember.atb = 0;
+        this.showMessage(`${activeMember.name}はみをまもっている...`);
 
         this.time.delayedCall(1000, () => {
-            this.startEnemyTurn();
+            // waiting状態に戻る
+            this.battleState = 'waiting';
+            this.showMessage('');
         });
     }
 
@@ -653,6 +698,10 @@ export class BattleScene extends Phaser.Scene {
      * プレイヤーの逃走
      */
     private playerEscapeAction(): void {
+        // アクティブメンバーのATBをリセット
+        const activeMember = this.partyMembers[this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0];
+        activeMember.atb = 0;
+
         // 50%の確率で逃げられる
         if (Phaser.Math.Between(1, 100) <= 50) {
             this.showMessage('うまく にげきれた！');
@@ -665,7 +714,9 @@ export class BattleScene extends Phaser.Scene {
             this.showMessage('にげられなかった！');
 
             this.time.delayedCall(1000, () => {
-                this.startEnemyTurn();
+                // waiting状態に戻る
+                this.battleState = 'waiting';
+                this.showMessage('');
             });
         }
     }
@@ -676,62 +727,81 @@ export class BattleScene extends Phaser.Scene {
     private startEnemyTurn(): void {
         this.battleState = 'enemyTurn';
 
+        // 生存メンバーからランダムにターゲットを選択
+        const aliveMembers = this.partyMembers
+            .map((member, index) => ({ member, index }))
+            .filter(item => item.member.hp > 0);
+
+        if (aliveMembers.length === 0) {
+            this.defeat();
+            return;
+        }
+
+        const targetData = aliveMembers[Phaser.Math.Between(0, aliveMembers.length - 1)];
+        const targetMember = targetData.member;
+        const targetSprite = this.partySprites[targetData.index];
+
         // ダメージ計算（改善版）
         const { damage, isCritical } = this.calculateDamage(
             this.enemy.attack,
-            this.playerDefense,
-            this.isDefending
+            targetMember.defense,
+            targetMember.isDefending
         );
 
-        this.playerHp -= damage;
+        targetMember.hp -= damage;
 
-        // パーティメンバーをダメージポーズに切り替え
-        this.partySprites.forEach((sprite) => {
-            // ダメージポーズに変更
-            sprite.setFrame(2);
+        // ターゲットのみダメージポーズとアニメーション
+        targetSprite.setFrame(2); // ダメージポーズ
 
-            // 後ろに仰け反るアニメーション
-            const originalX = sprite.x;
-            this.tweens.add({
-                targets: sprite,
-                x: sprite.x + 15,  // 後ろに仰け反る
-                duration: 100,
-                ease: 'Power2',
-                yoyo: true,
-                onComplete: () => {
-                    // 待機ポーズに戻す
-                    this.time.delayedCall(300, () => {
-                        sprite.setFrame(0);
-                    });
-                }
-            });
+        // 後ろに仰け反るアニメーション
+        this.tweens.add({
+            targets: targetSprite,
+            x: targetSprite.x + 30,  // 後ろに仰け反る（解像度2倍）
+            duration: 100,
+            ease: 'Power2',
+            yoyo: true,
+            onComplete: () => {
+                // 待機ポーズに戻す
+                this.time.delayedCall(300, () => {
+                    if (targetMember.hp > 0) {
+                        targetSprite.setFrame(0);
+                    } else {
+                        // 戦闘不能時は倒れたままにするなどの処理（今回はフレーム2のままにする等）
+                        // MVPではフレーム2（ダメージポーズ）のままにしておく、あるいは専用の戦闘不能ポーズがあればセット
+                        targetSprite.setFrame(2);
+                        targetSprite.setTint(0x888888); // 暗くする
+                    }
+                });
+            }
         });
 
         // プレイヤーのダメージエフェクト（画面揺れ）
         const shakeIntensity = isCritical ? 0.02 : 0.01;
         this.cameras.main.shake(isCritical ? 200 : 100, shakeIntensity);
 
-        // ダメージポップアップ（パーティスプライト付近）
-        if (this.partySprites.length > 0) {
-            this.showDamagePopup(
-                this.partySprites[0].x,
-                this.partySprites[0].y - 30,
-                damage,
-                isCritical
-            );
-        }
+        // ダメージポップアップ（ターゲット付近）
+        this.showDamagePopup(
+            targetSprite.x,
+            targetSprite.y - 60,  // 解像度2倍
+            damage,
+            isCritical
+        );
 
         // メッセージ
         const critText = isCritical ? 'クリティカル！ ' : '';
-        const defenseText = this.isDefending ? '（ぼうぎょ中）' : '';
-        this.showMessage(`${this.enemy.name}のこうげき！\n${critText}${damage}のダメージをうけた！${defenseText}`);
+        const defenseText = targetMember.isDefending ? '（ぼうぎょ中）' : '';
+        this.showMessage(`${this.enemy.name}のこうげき！\n${targetMember.name}に${damage}のダメージ！${defenseText}`);
         this.updateHpDisplay();
 
         this.time.delayedCall(2000, () => {
-            if (this.playerHp <= 0) {
+            // パーティ全滅チェック（全員のHPが0以下）
+            const allDead = this.partyMembers.every(m => m.hp <= 0);
+            if (allDead) {
                 this.defeat();
             } else {
-                this.startPlayerTurn();
+                // waiting状態に戻り、ATBで次のターンを判定
+                this.battleState = 'waiting';
+                this.showMessage('');
             }
         });
     }
@@ -797,15 +867,17 @@ export class BattleScene extends Phaser.Scene {
      * HP表示を更新
      */
     private updateHpDisplay(): void {
-        // FF6風UIの座標
-        const uiY = GAME_HEIGHT - 90;
-        const statusX = 115;
+        // FF6風UIの座標（解像度2倍）
+        const uiY = GAME_HEIGHT - 180;
+        const statusX = 230;
 
-        // テキスト更新（FF6風：HP数値のみ）
-        this.playerHpText.setText(`${Math.max(0, this.playerHp)}`);
+        // テキスト更新（FF6風：HP数値のみ）- 各メンバーのHPを更新
+        for (let i = 0; i < this.partyCount; i++) {
+            const member = this.partyMembers[i];
+            this.partyHpTexts[i].setText(`${Math.max(0, member.hp)}`);
+        }
 
-        // HPバー更新
-        this.drawHpBar(this.playerHpBar, statusX + 170, uiY + 6, 80, 12, this.playerHp, this.playerMaxHp);
+        // HPバー更新は不要（ATBバーのみ使用）
     }
 
     /**
@@ -853,7 +925,7 @@ export class BattleScene extends Phaser.Scene {
         isCritical: boolean
     ): void {
         const color = isCritical ? '#fbbf24' : '#ffffff';
-        const fontSize = isCritical ? '14px' : '12px';
+        const fontSize = isCritical ? '28px' : '24px';
         const text = isCritical ? `${damage}!` : `${damage}`;
 
         const popup = this.add.text(x, y, text, {
@@ -861,7 +933,7 @@ export class BattleScene extends Phaser.Scene {
             fontSize: fontSize,
             color: color,
             stroke: '#000000',
-            strokeThickness: 3
+            strokeThickness: 6
         });
         popup.setOrigin(0.5);
         popup.setDepth(100);
@@ -869,7 +941,7 @@ export class BattleScene extends Phaser.Scene {
         // アニメーション（上に浮かびながらフェードアウト）
         this.tweens.add({
             targets: popup,
-            y: y - 40,
+            y: y - 80,
             alpha: 0,
             duration: 1000,
             ease: 'Power2',
@@ -893,36 +965,83 @@ export class BattleScene extends Phaser.Scene {
 
     /**
      * 毎フレーム更新（ATBゲージの回復処理）
+     * 設計書3.5準拠: ATB回復速度 = (baseSpeed + characterSpeed/100)
      */
     update(time: number, delta: number): void {
-        // バトル中の場合のみATBを更新
-        if (this.battleState !== 'start' && this.battleState !== 'victory' && this.battleState !== 'defeat') {
-            const atbRecoveryRate = 0.5;  // フレームあたりの回復量
+        // バトル終了時は何もしない
+        if (this.battleState === 'start' || this.battleState === 'victory' ||
+            this.battleState === 'defeat' || this.battleState === 'escaped') {
+            return;
+        }
 
-            for (let i = 0; i < this.partyCount; i++) {
-                const member = this.partyMembers[i];
+        // ウェイトモード: プレイヤーターン中はATB停止（設計書3.5.4）
+        if (this.battleState === 'playerTurn') {
+            return;
+        }
 
-                // ATBが満タンでない場合は回復
-                if (member.atb < member.maxAtb) {
-                    member.atb = Math.min(member.maxAtb, member.atb + atbRecoveryRate);
+        // 敵ターン中もATB停止
+        if (this.battleState === 'enemyTurn') {
+            return;
+        }
 
-                    // ATBバーを更新
-                    const uiY = GAME_HEIGHT - 90;
-                    const statusX = 115;
-                    const memberHeight = 20;
-                    const rowY = uiY + 5 + (i * memberHeight);
+        // waiting状態: ATBを更新してターン開始判定
+        const uiY = GAME_HEIGHT - 180;
+        const statusX = 230;
+        const memberHeight = 40;
 
-                    this.drawAtbBar(
-                        this.partyAtbBars[i],
-                        statusX + 135,
-                        rowY + 2,
-                        80,
-                        10,
-                        member.atb,
-                        member.maxAtb
-                    );
-                }
+        // === パーティメンバーのATB回復 ===
+        for (let i = 0; i < this.partyCount; i++) {
+            const member = this.partyMembers[i];
+
+            // 戦闘不能チェック
+            if (member.hp <= 0) {
+                member.atb = 0;
+                continue;
             }
+
+            // ATBが満タンでない場合は回復
+            if (member.atb < member.maxAtb) {
+                // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed/100)
+                const atbRecovery = this.ATB_BASE_SPEED + (member.speed / this.ATB_SPEED_DIVISOR);
+                member.atb = Math.min(member.maxAtb, member.atb + atbRecovery);
+
+                // ATBバーを更新
+                const rowY = uiY + 10 + (i * memberHeight);
+                this.drawAtbBar(
+                    this.partyAtbBars[i],
+                    statusX + 270,
+                    rowY + 4,
+                    160,
+                    20,
+                    member.atb,
+                    member.maxAtb
+                );
+            }
+        }
+
+        // === 敵のATB回復 ===
+        if (this.enemy.hp > 0 && this.enemy.atb < this.enemy.maxAtb) {
+            const enemyAtbRecovery = this.ATB_BASE_SPEED + (this.enemy.speed / this.ATB_SPEED_DIVISOR);
+            this.enemy.atb = Math.min(this.enemy.maxAtb, this.enemy.atb + enemyAtbRecovery);
+        }
+
+        // === ターン開始判定 ===
+        // パーティメンバーでATBが満タンのキャラがいればプレイヤーターン
+        const readyMemberIndex = this.partyMembers.findIndex(
+            (m, i) => m.hp > 0 && m.atb >= m.maxAtb
+        );
+
+        if (readyMemberIndex >= 0) {
+            this.activePartyMemberIndex = readyMemberIndex;
+            this.startPlayerTurn();
+            return;
+        }
+
+        // 敵のATBが満タンなら敵ターン
+        if (this.enemy.hp > 0 && this.enemy.atb >= this.enemy.maxAtb) {
+            this.enemy.atb = 0; // 敵ATBをリセット
+            this.startEnemyTurn();
+            return;
         }
     }
 }

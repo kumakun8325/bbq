@@ -10,9 +10,9 @@ import { TitleScene } from '@scenes/TitleScene';
 import { MapScene } from '@scenes/MapScene';
 import { BattleScene } from '@scenes/BattleScene';
 
-/** ゲームの基本解像度 */
-export const GAME_WIDTH = 480;
-export const GAME_HEIGHT = 320;
+/** ゲームの基本解像度（テキストをくっきり表示するため高解像度） */
+export const GAME_WIDTH = 960;
+export const GAME_HEIGHT = 640;
 
 /** タイルサイズ */
 export const TILE_SIZE = 16;
