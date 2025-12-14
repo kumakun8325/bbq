@@ -12,6 +12,9 @@ type BattleCommand = 'attack' | 'defend' | 'escape';
 /** バトルステート */
 type BattleState = 'start' | 'playerTurn' | 'enemyTurn' | 'victory' | 'defeat' | 'escaped' | 'waiting';
 
+/** 弱点属性タイプ */
+type WeaknessType = 'sword' | 'spear' | 'dagger' | 'axe' | 'bow' | 'staff' | 'fire' | 'ice' | 'lightning' | 'wind' | 'light' | 'dark';
+
 /** パーティメンバーデータ */
 interface PartyMemberData {
     name: string;
@@ -24,6 +27,7 @@ interface PartyMemberData {
     maxAtb: number;
     spriteKey: string;
     isDefending: boolean;  // 防御中フラグ
+    weaponType: WeaknessType; // 装備武器のタイプ（MVPでは固定）
 }
 
 /** 敵データ */
@@ -40,6 +44,12 @@ interface EnemyData {
     width: number;
     height: number;
     spriteKey: string;
+    // ブレイクシステム
+    shield: number;              // 現在のシールドポイント
+    maxShield: number;           // 最大シールドポイント
+    weaknesses: WeaknessType[];  // 弱点リスト
+    revealedWeaknesses: boolean[]; // 発見済みフラグ
+    isBroken: boolean;           // ブレイク状態かどうか
 }
 
 /** 敵データベース */
@@ -56,7 +66,12 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         color: 0xe94560,
         width: 32,
         height: 32,
-        spriteKey: 'enemy-slime'
+        spriteKey: 'enemy-slime',
+        shield: 2,
+        maxShield: 2,
+        weaknesses: ['sword', 'fire'],
+        revealedWeaknesses: [false, false],
+        isBroken: false
     },
     bat: {
         name: 'コウモリ',
@@ -70,7 +85,12 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         color: 0x8b5cf6,
         width: 32,
         height: 32,
-        spriteKey: 'enemy-bat'
+        spriteKey: 'enemy-bat',
+        shield: 1,
+        maxShield: 1,
+        weaknesses: ['bow', 'wind'],
+        revealedWeaknesses: [false, false],
+        isBroken: false
     },
     goblin: {
         name: 'ゴブリン',
@@ -84,7 +104,12 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         color: 0xf59e0b,
         width: 32,
         height: 32,
-        spriteKey: 'enemy-goblin'
+        spriteKey: 'enemy-goblin',
+        shield: 3,
+        maxShield: 3,
+        weaknesses: ['sword', 'spear', 'fire'],
+        revealedWeaknesses: [false, false, false],
+        isBroken: false
     }
 };
 
@@ -102,10 +127,10 @@ export class BattleScene extends Phaser.Scene {
     // パーティメンバーデータ（ATBゲージ含む）
     // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed) * speedModifier
     private partyMembers: PartyMemberData[] = [
-        { name: 'とりくん', hp: 100, maxHp: 100, attack: 15, defense: 5, speed: 40, atb: 80, maxAtb: 100, spriteKey: 'player-battle', isDefending: false },
-        { name: 'だいちゃん', hp: 80, maxHp: 80, attack: 20, defense: 3, speed: 50, atb: 60, maxAtb: 100, spriteKey: 'daichan-battle', isDefending: false },
-        { name: 'しんいち', hp: 90, maxHp: 90, attack: 12, defense: 8, speed: 30, atb: 40, maxAtb: 100, spriteKey: 'shinichi-battle', isDefending: false },
-        { name: 'たいさ', hp: 120, maxHp: 120, attack: 18, defense: 6, speed: 25, atb: 20, maxAtb: 100, spriteKey: 'taisa-battle', isDefending: false }
+        { name: 'とりくん', hp: 100, maxHp: 100, attack: 15, defense: 5, speed: 40, atb: 80, maxAtb: 100, spriteKey: 'player-battle', isDefending: false, weaponType: 'sword' },
+        { name: 'だいちゃん', hp: 80, maxHp: 80, attack: 20, defense: 3, speed: 50, atb: 60, maxAtb: 100, spriteKey: 'daichan-battle', isDefending: false, weaponType: 'axe' },
+        { name: 'しんいち', hp: 90, maxHp: 90, attack: 12, defense: 8, speed: 30, atb: 40, maxAtb: 100, spriteKey: 'shinichi-battle', isDefending: false, weaponType: 'bow' },
+        { name: 'たいさ', hp: 120, maxHp: 120, attack: 18, defense: 6, speed: 25, atb: 20, maxAtb: 100, spriteKey: 'taisa-battle', isDefending: false, weaponType: 'staff' }
     ];
 
     // 現在行動可能なメンバーのインデックス（-1 = 誰も行動可能でない）
@@ -130,6 +155,11 @@ export class BattleScene extends Phaser.Scene {
     // パーティメンバーのHP表示（4人分）
     private partyHpTexts: Phaser.GameObjects.Text[] = [];
     private partyAtbBars: Phaser.GameObjects.Graphics[] = [];  // ATBゲージ
+
+    // ブレイクシステムUI
+    private enemyShieldText!: Phaser.GameObjects.Text;
+    private enemyWeaknessText!: Phaser.GameObjects.Text;
+    private breakText!: Phaser.GameObjects.Text;
 
     // HPバー（後方互換性のため残す）
     private playerHpBar!: Phaser.GameObjects.Graphics;
@@ -165,6 +195,7 @@ export class BattleScene extends Phaser.Scene {
 
         this.createBackground();
         this.createEnemySprite();
+        this.createEnemyStatusUI(); // 新規追加
         this.createPartySprites();  // FF6風：パーティを右側に配置
         this.createUI();
         this.setupInput();
@@ -236,6 +267,103 @@ export class BattleScene extends Phaser.Scene {
             repeat: -1,
             ease: 'Sine.easeInOut'
         });
+    }
+
+    /**
+     * 敵のステータス表示（シールド、弱点）を作成
+     */
+    private createEnemyStatusUI(): void {
+        const x = this.enemySprite.x;
+        const y = this.enemySprite.y + 80;
+
+        // シールドテキスト
+        this.enemyShieldText = this.add.text(
+            x,
+            y,
+            '',
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '16px',
+                color: '#60a5fa', // 青色
+                stroke: '#000000',
+                strokeThickness: 4,
+                align: 'center'
+            }
+        );
+        this.enemyShieldText.setOrigin(0.5);
+
+        // 弱点テキスト
+        this.enemyWeaknessText = this.add.text(
+            x,
+            y + 24,
+            '',
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '14px',
+                color: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 4,
+                align: 'center'
+            }
+        );
+        this.enemyWeaknessText.setOrigin(0.5);
+
+        // BREAK! テキスト（初期は非表示）
+        this.breakText = this.add.text(
+            x,
+            this.enemySprite.y,
+            'BREAK!',
+            {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '32px',
+                color: '#fbbf24', // 黄色
+                stroke: '#000000',
+                strokeThickness: 6
+            }
+        );
+        this.breakText.setOrigin(0.5);
+        this.breakText.setVisible(false);
+        this.breakText.setDepth(200);
+
+        this.updateEnemyStatusDisplay();
+    }
+
+    /**
+     * 敵のステータス表示を更新
+     */
+    private updateEnemyStatusDisplay(): void {
+        if (!this.enemy) return;
+
+        // シールド表示
+        if (this.enemy.isBroken) {
+            this.enemyShieldText.setText('SHIELD BROKEN!');
+            this.enemyShieldText.setColor('#fbbf24'); // 黄色
+        } else {
+            this.enemyShieldText.setText(`SHIELD: ${this.enemy.shield}`);
+            this.enemyShieldText.setColor('#60a5fa'); // 青色
+        }
+
+        // 弱点表示
+        let weaknessStr = '';
+        this.enemy.weaknesses.forEach((weakness, index) => {
+            const isRevealed = this.enemy.revealedWeaknesses[index];
+            const icon = this.getWeaknessIcon(weakness);
+            weaknessStr += isRevealed ? `[${icon}] ` : '[?] ';
+        });
+        this.enemyWeaknessText.setText(weaknessStr.trim());
+    }
+
+    /**
+     * 弱点タイプから表示用アイコン（文字）を取得
+     */
+    private getWeaknessIcon(type: WeaknessType): string {
+        const icons: Record<WeaknessType, string> = {
+            'sword': '剣', 'spear': '槍', 'dagger': '短',
+            'axe': '斧', 'bow': '弓', 'staff': '杖',
+            'fire': '火', 'ice': '氷', 'lightning': '雷',
+            'wind': '風', 'light': '光', 'dark': '闇'
+        };
+        return icons[type] || '?';
     }
 
     /**
@@ -605,11 +733,36 @@ export class BattleScene extends Phaser.Scene {
             activeMember.maxAtb
         );
 
+        // 弱点チェックとシールド処理
+        let weaknessMultiplier = 1.0;
+        let isShieldBrokenNow = false;
+
+        // メンバーの武器属性が弱点かチェック
+        const weaknessIndex = this.enemy.weaknesses.indexOf(activeMember.weaponType);
+        if (weaknessIndex !== -1) {
+            // 弱点ヒット！
+            this.enemy.revealedWeaknesses[weaknessIndex] = true;
+            weaknessMultiplier = 1.3;
+
+            // シールド削減（ブレイク中でなければ）
+            if (!this.enemy.isBroken) {
+                this.enemy.shield = Math.max(0, this.enemy.shield - 1);
+
+                // ブレイク判定
+                if (this.enemy.shield === 0) {
+                    this.enemy.isBroken = true;
+                    isShieldBrokenNow = true;
+                }
+            }
+        }
+
         // ダメージ計算（改善版）- アクティブなメンバーの攻撃力を使用
         const { damage, isCritical } = this.calculateDamage(
             activeMember.attack,
             this.enemy.defense,
-            false
+            false,
+            weaknessMultiplier,
+            this.enemy.isBroken
         );
 
         // パーティメンバーを攻撃ポーズに切り替え
@@ -657,13 +810,23 @@ export class BattleScene extends Phaser.Scene {
                 this.enemySprite.x,
                 this.enemySprite.y - 60,  // 解像度2倍
                 damage,
-                isCritical
+                isCritical,
+                weaknessMultiplier > 1.0
             );
+
+            // ブレイク演出
+            if (isShieldBrokenNow) {
+                this.showBreakEffect();
+            }
+
+            // ステータス表示更新
+            this.updateEnemyStatusDisplay();
         });
 
         // メッセージ
         const critText = isCritical ? 'クリティカル！ ' : '';
-        this.showMessage(`${critText}${this.enemy.name}に${damage}のダメージ！`);
+        const weakText = weaknessMultiplier > 1.0 ? 'じゃくてん！ ' : '';
+        this.showMessage(`${critText}${weakText}${this.enemy.name}に${damage}のダメージ！`);
         this.updateHpDisplay();
 
         this.time.delayedCall(1500, () => {
@@ -726,6 +889,23 @@ export class BattleScene extends Phaser.Scene {
      */
     private startEnemyTurn(): void {
         this.battleState = 'enemyTurn';
+
+        // ブレイク状態からの回復チェック
+        if (this.enemy.isBroken) {
+            this.enemy.isBroken = false;
+            this.enemy.shield = this.enemy.maxShield; // シールド前回覆
+            this.updateEnemyStatusDisplay();
+            this.enemySprite.clearTint(); // 色を戻す
+
+            this.showMessage(`${this.enemy.name}は たい勢をたてなおした！`);
+
+            // 行動スキップ
+            this.time.delayedCall(2000, () => {
+                this.battleState = 'waiting';
+                this.showMessage('');
+            });
+            return;
+        }
 
         // 生存メンバーからランダムにターゲットを選択
         const aliveMembers = this.partyMembers
@@ -889,7 +1069,9 @@ export class BattleScene extends Phaser.Scene {
     private calculateDamage(
         attack: number,
         defense: number,
-        isDefending: boolean
+        isDefending: boolean,
+        weaknessMultiplier: number = 1.0,
+        isBroken: boolean = false
     ): { damage: number; isCritical: boolean } {
         // 基本ダメージ
         let baseDamage = attack - Math.floor(defense / 2);
@@ -898,10 +1080,18 @@ export class BattleScene extends Phaser.Scene {
         const randomMultiplier = 0.9 + Math.random() * 0.2;
         baseDamage = Math.floor(baseDamage * randomMultiplier);
 
+        // 弱点ボーナス
+        baseDamage = Math.floor(baseDamage * weaknessMultiplier);
+
         // クリティカル判定（15%）
         const isCritical = Math.random() < 0.15;
         if (isCritical) {
             baseDamage = Math.floor(baseDamage * 1.5);
+        }
+
+        // ブレイクボーナス（2倍）
+        if (isBroken) {
+            baseDamage = Math.floor(baseDamage * 2.0);
         }
 
         // 防御中は半減
@@ -922,9 +1112,10 @@ export class BattleScene extends Phaser.Scene {
         x: number,
         y: number,
         damage: number,
-        isCritical: boolean
+        isCritical: boolean,
+        isWeakness: boolean = false
     ): void {
-        const color = isCritical ? '#fbbf24' : '#ffffff';
+        const color = isCritical ? '#fbbf24' : (isWeakness ? '#ef4444' : '#ffffff');
         const fontSize = isCritical ? '28px' : '24px';
         const text = isCritical ? `${damage}!` : `${damage}`;
 
@@ -961,6 +1152,57 @@ export class BattleScene extends Phaser.Scene {
                 repeat: 2
             });
         }
+    }
+
+    private showBreakEffect(): void {
+        this.breakText.setVisible(true);
+        this.breakText.setScale(0);
+        this.breakText.setAlpha(1);
+
+        // テキストのポップアニメーション
+        this.tweens.add({
+            targets: this.breakText,
+            scaleX: 1.5,
+            scaleY: 1.5,
+            duration: 300,
+            ease: 'Back.out',
+            onComplete: () => {
+                this.tweens.add({
+                    targets: this.breakText,
+                    scaleX: 1.0,
+                    scaleY: 1.0,
+                    duration: 200,
+                    ease: 'Sine.out',
+                    onComplete: () => {
+                        // 少し表示してからフェードアウト
+                        this.tweens.add({
+                            targets: this.breakText,
+                            alpha: 0,
+                            duration: 500,
+                            delay: 1000,
+                            onComplete: () => {
+                                this.breakText.setVisible(false);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+
+        // 画面揺れ（激しく）
+        this.cameras.main.shake(500, 0.03);
+
+        // 敵のフラッシュ
+        this.tweens.add({
+            targets: this.enemySprite,
+            alpha: 0.5,
+            duration: 100,
+            yoyo: true,
+            repeat: 5
+        });
+
+        // 敵の色を暗くする（スタン表現）
+        this.enemySprite.setTint(0x888888);
     }
 
     /**
