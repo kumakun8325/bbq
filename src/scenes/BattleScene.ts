@@ -171,6 +171,7 @@ export class BattleScene extends Phaser.Scene {
     // ターン数表示
     private turnCount: number = 0;
     private turnText!: Phaser.GameObjects.Text;
+    private actedPartyMemberIndices: Set<number> = new Set(); // 今のターンに行動済みのメンバーインデックス
 
     // HPバー（後方互換性のため残す）
     private playerHpBar!: Phaser.GameObjects.Graphics;
@@ -199,9 +200,9 @@ export class BattleScene extends Phaser.Scene {
             member.isDefending = false;
         }
         this.enemy.atb = Phaser.Math.Between(30, 70);
-
         // ターン数リセット
         this.turnCount = 1;
+        this.actedPartyMemberIndices.clear();
     }
 
     create(): void {
@@ -776,9 +777,37 @@ export class BattleScene extends Phaser.Scene {
     private startPlayerTurn(): void {
         this.battleState = 'playerTurn';
 
-        // ターン数更新
-        this.turnText.setText(`TURN: ${this.turnCount}`);
-        this.turnCount++;
+        // ターン経過判定（全員が一巡したらターン更新）
+        // 現状の生存メンバー全員が行動済みかチェック
+        const livingMembersIndices = this.partyMembers
+            .map((m, i) => ({ hp: m.hp, index: i }))
+            .filter(item => item.hp > 0)
+            .map(item => item.index);
+
+        // 生存メンバー全員が既に行動済みリストに含まれている状態で、かつ
+        // 今回行動するメンバーも既に行動済みの場合（＝2巡目に入った）
+        // または、全員が行動済みになったタイミングでターンを進める？
+        // ユーザー要望:「4人が一巡したら1ターン」「また次の誰かの番が回ってきたらターンが進みます」
+
+        // ロジック:
+        // 1. 今回行動するメンバーが、既に actedPartyMemberIndices に含まれているかチェック
+        //    含まれているなら、それは "新しい巡" の始まりとみなせる（全員が動いたかは別として、この人は2回目）
+        //    ただし "4人が一巡したら" なので、全員完了チェックも必要。
+
+        // シンプルな実装:
+        // 生存者全員が actedPartyMemberIndices に入っているなら、ターン更新してクリア
+        const allLivingActed = livingMembersIndices.every(i => this.actedPartyMemberIndices.has(i));
+
+        if (allLivingActed) {
+            this.turnCount++;
+            this.turnText.setText(`TURN: ${this.turnCount}`);
+            this.actedPartyMemberIndices.clear();
+        }
+
+        // このメンバーを行動済みに記録
+        if (this.activePartyMemberIndex >= 0) {
+            this.actedPartyMemberIndices.add(this.activePartyMemberIndex);
+        }
 
         // アクティブメンバーの防御フラグをリセット
         const activeMember = this.partyMembers[this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0];
@@ -975,9 +1004,7 @@ export class BattleScene extends Phaser.Scene {
     private startEnemyTurn(): void {
         this.battleState = 'enemyTurn';
 
-        // ターン数更新
-        this.turnText.setText(`TURN: ${this.turnCount}`);
-        this.turnCount++;
+        // 敵の行動はターン数に影響しない（プレイヤーの行動巡で管理）
 
         // ブレイク状態からの回復チェック
         if (this.enemy.isBroken) {
