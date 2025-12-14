@@ -50,7 +50,7 @@ interface EnemyData {
     weaknesses: WeaknessType[];  // 弱点リスト
     revealedWeaknesses: boolean[]; // 発見済みフラグ
     isBroken: boolean;           // ブレイク状態かどうか
-    turnsSkipped: number;        // ブレイク中にスキップしたターン数
+    breakStartTurn: number;      // ブレイクしたターン数（グローバルターン）
 }
 
 /** 敵データベース */
@@ -73,7 +73,7 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         weaknesses: ['sword', 'fire'],
         revealedWeaknesses: [false, false],
         isBroken: false,
-        turnsSkipped: 0
+        breakStartTurn: 0
     },
     bat: {
         name: 'コウモリ',
@@ -93,7 +93,7 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         weaknesses: ['bow', 'wind'],
         revealedWeaknesses: [false, false],
         isBroken: false,
-        turnsSkipped: 0
+        breakStartTurn: 0
     },
     goblin: {
         name: 'ゴブリン',
@@ -113,7 +113,7 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
         weaknesses: ['sword', 'spear', 'fire'],
         revealedWeaknesses: [false, false, false],
         isBroken: false,
-        turnsSkipped: 0
+        breakStartTurn: 0
     }
 };
 
@@ -864,7 +864,7 @@ export class BattleScene extends Phaser.Scene {
                 // ブレイク判定
                 if (this.enemy.shield === 0) {
                     this.enemy.isBroken = true;
-                    this.enemy.turnsSkipped = 0; // スキップカウンタリセット
+                    this.enemy.breakStartTurn = this.turnCount; // ブレイクターンを記録
                     isShieldBrokenNow = true;
                 }
             }
@@ -1008,20 +1008,19 @@ export class BattleScene extends Phaser.Scene {
 
         // ブレイク状態からの回復チェック
         if (this.enemy.isBroken) {
-            // 既に1ターン以上スキップしている場合のみ回復（最低1回は行動不能）
-            if (this.enemy.turnsSkipped >= 1) {
+            // ブレイクしたターン + 2ターン目以降に回復
+            // 例: T4ブレイク -> T4スタン, T5スタン -> T6回復
+            const recoveryTurn = this.enemy.breakStartTurn + 2;
+
+            if (this.turnCount >= recoveryTurn) {
                 this.enemy.isBroken = false;
                 this.enemy.shield = this.enemy.maxShield; // シールド全回復
                 this.updateEnemyStatusDisplay();
                 this.enemySprite.clearTint(); // 色を戻す
                 this.setStunStarsVisible(false); // 星を消す
 
-                this.setStunStarsVisible(false); // 星を消す
-
                 this.showMessage(`${this.enemy.name}は 体勢を立て直した！`);
             } else {
-                // スキップカウントを増やして行動パス
-                this.enemy.turnsSkipped++;
                 this.showMessage(`${this.enemy.name}は 気絶している...`);
             }
 
