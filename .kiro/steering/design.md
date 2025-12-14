@@ -2,7 +2,7 @@
 
 > **Project**: BBQ (Bird Battle Quest)  
 > **Version**: 0.1.0  
-> **Last Updated**: 2025-12-13
+> **Last Updated**: 2025-12-14
 
 ---
 
@@ -189,29 +189,27 @@ bbq/
 ├── src/
 │   ├── main.ts                 # エントリーポイント
 │   ├── config/
-│   │   └── gameConfig.ts       # Phaser設定
+│   │   ├── gameConfig.ts       # Phaser設定
+│   │   └── battleConfig.ts     # バトルシステム定数（ATB、UI、レイアウト）
 │   ├── scenes/
 │   │   ├── BootScene.ts        # 初期化シーン
 │   │   ├── PreloadScene.ts     # アセットロード
 │   │   ├── TitleScene.ts       # タイトル画面
 │   │   ├── MapScene.ts         # フィールドマップ
-│   │   └── BattleScene.ts      # バトル画面
-│   ├── entities/               # (v0.2で追加)
-│   │   ├── Player.ts           
-│   │   ├── Enemy.ts            
-│   │   └── Character.ts        
-│   ├── systems/                # (v0.2で追加)
-│   │   ├── BattleSystem.ts     
-│   │   ├── EncounterSystem.ts  
-│   │   └── SaveSystem.ts       
-│   ├── managers/               # (v0.2で追加)
+│   │   ├── BattleScene.ts      # バトル画面
+│   │   └── index.ts            # シーンエクスポート
+│   ├── systems/
+│   │   ├── DamageCalculator.ts # ダメージ計算ロジック
+│   │   └── BattleUtils.ts      # 弱点アイコン等のユーティリティ
+│   ├── managers/
 │   │   └── GameStateManager.ts # ゲーム全体の状態管理
-│   ├── ui/                     # (v0.2で追加)
-│   │   ├── CommandMenu.ts      
-│   │   └── HpBar.ts            
-│   ├── data/                   # (v0.2で追加)
-│   │   ├── enemies.ts          # JSONではなくTSで型安全に管理
-│   │   └── characters.ts       
+│   ├── ui/
+│   │   └── BattleUIHelpers.ts  # UI描画ヘルパー（ウィンドウ、HPバー、ATBゲージ）
+│   ├── data/
+│   │   ├── enemies.ts          # 敵データベース
+│   │   ├── characters.ts       # キャラクターデータ
+│   │   ├── abilities.ts        # アビリティ定義
+│   │   └── items.ts            # アイテム定義
 │   └── types/
 │       └── index.ts            # 型定義
 ├── assets/
