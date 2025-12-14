@@ -79,13 +79,68 @@ export type BattleState =
     | 'start'
     | 'playerTurn'
     | 'selectCommand'
-    | 'selectTarget'
+    | 'selectItem'      // アイテム選択
+    | 'selectTarget'    // ターゲット選択
     | 'executeAction'
     | 'enemyTurn'
     | 'checkResult'
     | 'victory'
     | 'defeat'
-    | 'escaped';
+    | 'escaped'
+    | 'waiting'         // ATB待機中
+    | 'executing';      // アクション実行中
+
+/** バトル中のパーティメンバーデータ */
+export interface PartyMemberBattleData {
+    name: string;
+    hp: number;
+    maxHp: number;
+    mp: number;
+    maxMp: number;
+    attack: number;
+    defense: number;
+    speed: number;
+    atb: number;
+    maxAtb: number;
+    spriteKey: string;
+    isDefending: boolean;
+    weaponType: WeaknessType;
+    abilityId: string;
+}
+
+/** バトル中の敵データ */
+export interface EnemyBattleData {
+    name: string;
+    hp: number;
+    maxHp: number;
+    attack: number;
+    defense: number;
+    speed: number;
+    atb: number;
+    maxAtb: number;
+    color: number;
+    width: number;
+    height: number;
+    spriteKey: string;
+    shield: number;
+    maxShield: number;
+    weaknesses: WeaknessType[];
+    revealedWeaknesses: boolean[];
+    isBroken: boolean;
+    breakStartTurn: number;
+}
+
+/** ターゲット選択結果 */
+export interface TargetSelectionResult {
+    type: 'enemy' | 'party';
+    index: number;
+}
+
+/** ダメージ計算結果 */
+export interface DamageResult {
+    damage: number;
+    isCritical: boolean;
+}
 
 /** セーブデータ */
 export interface SaveData {

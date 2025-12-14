@@ -6,139 +6,24 @@
 import Phaser from "phaser";
 import { GAME_WIDTH, GAME_HEIGHT } from "@/config/gameConfig";
 import { GameStateManager } from "@/managers/GameStateManager";
-import { WeaknessType, TargetScope } from "@/types";
+import {
+  WeaknessType,
+  TargetScope,
+  BattleState,
+  BattleCommand,
+  PartyMemberBattleData,
+  EnemyBattleData,
+  TargetSelectionResult,
+} from "@/types";
 import { ITEMS } from "@/data/items";
 import { ABILITIES } from "@/data/abilities";
+import { getEnemyData } from "@/data/enemies";
+import { calculateDamage } from "@/systems/DamageCalculator";
+import { getWeaknessIcon, formatWeaknessDisplay } from "@/systems/BattleUtils";
 
-/** バトルコマンド */
-type BattleCommand = "attack" | "defend" | "escape" | "skill" | "item";
-
-/** バトルステート */
-type BattleState =
-  | "start"
-  | "playerTurn"
-  | "selectItem" // アイテム選択
-  | "selectTarget" // ターゲット選択
-  | "enemyTurn"
-  | "victory"
-  | "defeat"
-  | "escaped"
-  | "waiting"
-  | "executing";
-
-/** ターゲット選択モード */
-interface TargetSelectionResult {
-  type: 'enemy' | 'party';
-  index: number;
-}
-
-/** パーティメンバーデータ */
-interface PartyMemberData {
-  name: string;
-  hp: number;
-  maxHp: number;
-  mp: number; // MP追加
-  maxMp: number; // MaxMP追加
-  attack: number;
-  defense: number;
-  speed: number;
-  atb: number;
-  maxAtb: number;
-  spriteKey: string;
-  isDefending: boolean;
-  weaponType: WeaknessType;
-  abilityId: string; // 固有アビリティID追加
-}
-
-/** 敵データ */
-interface EnemyData {
-  name: string;
-  hp: number;
-  maxHp: number;
-  attack: number;
-  defense: number;
-  speed: number; // ATB回復速度に影響
-  atb: number; // 敵もATBを持つ
-  maxAtb: number;
-  color: number;
-  width: number;
-  height: number;
-  spriteKey: string;
-  // ブレイクシステム
-  shield: number; // 現在のシールドポイント
-  maxShield: number; // 最大シールドポイント
-  weaknesses: WeaknessType[]; // 弱点リスト
-  revealedWeaknesses: boolean[]; // 発見済みフラグ
-  isBroken: boolean; // ブレイク状態かどうか
-  breakStartTurn: number; // ブレイクしたターン数（グローバルターン）
-}
-
-/** 敵データベース */
-const ENEMY_DATABASE: Record<string, EnemyData> = {
-  slime: {
-    name: "スライム",
-    hp: 500,
-    maxHp: 500,
-    attack: 10,
-    defense: 2,
-    speed: 20, // 低速な敵
-    atb: 0,
-    maxAtb: 100,
-    color: 0xe94560,
-    width: 32,
-    height: 32,
-    spriteKey: "enemy-slime",
-    shield: 4,
-    maxShield: 4,
-    weaknesses: ["sword", "fire"],
-    revealedWeaknesses: [false, false],
-    isBroken: false,
-    breakStartTurn: 0,
-  },
-  bat: {
-    name: "コウモリ",
-    hp: 350,
-    maxHp: 350,
-    attack: 15,
-    defense: 1,
-    speed: 60, // 素早い敵
-    atb: 0,
-    maxAtb: 100,
-    color: 0x8b5cf6,
-    width: 32,
-    height: 32,
-    spriteKey: "enemy-bat",
-    shield: 3,
-    maxShield: 3,
-    weaknesses: ["bow", "wind"],
-    revealedWeaknesses: [false, false],
-    isBroken: false,
-    breakStartTurn: 0,
-  },
-  goblin: {
-    name: "ゴブリン",
-    hp: 800,
-    maxHp: 800,
-    attack: 20,
-    defense: 5,
-    speed: 35, // 中速な敵
-    atb: 0,
-    maxAtb: 100,
-    color: 0xf59e0b,
-    width: 32,
-    height: 32,
-    spriteKey: "enemy-goblin",
-    shield: 5,
-    maxShield: 5,
-    weaknesses: ["sword", "spear", "fire"],
-    revealedWeaknesses: [false, false, false],
-    isBroken: false,
-    breakStartTurn: 0,
-  },
-};
 
 export class BattleScene extends Phaser.Scene {
-  private enemy!: EnemyData;
+  private enemy!: EnemyBattleData;
   private enemyType: string = "slime"; // 現在の敵タイプ
   private enemySprite!: Phaser.GameObjects.Sprite;
   private returnScene: string = "MapScene";
@@ -152,7 +37,7 @@ export class BattleScene extends Phaser.Scene {
   // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed) * speedModifier
   // パーティメンバーデータ（ATBゲージ含む）
   // GameStateManagerから取得して設定
-  private partyMembers: PartyMemberData[] = [];
+  private partyMembers: PartyMemberBattleData[] = [];
 
   // 現在行動可能なメンバーのインデックス（-1 = 誰も行動可能でない）
   private activePartyMemberIndex: number = -1;
@@ -231,7 +116,7 @@ export class BattleScene extends Phaser.Scene {
     playerPosition?: { x: number; y: number };
   }): void {
     this.enemyType = data.enemyType || "slime";
-    this.enemy = { ...ENEMY_DATABASE[this.enemyType] };
+    this.enemy = getEnemyData(this.enemyType);
     this.returnScene = data.returnScene || "MapScene";
     this.playerPosition = data.playerPosition || { x: 0, y: 0 };
 
@@ -455,35 +340,12 @@ export class BattleScene extends Phaser.Scene {
       this.enemyShieldText.setColor("#60a5fa"); // 青色
     }
 
-    // 弱点表示
-    let weaknessStr = "";
-    this.enemy.weaknesses.forEach((weakness, index) => {
-      const isRevealed = this.enemy.revealedWeaknesses[index];
-      const icon = this.getWeaknessIcon(weakness);
-      weaknessStr += isRevealed ? `[${icon}] ` : "[?] ";
-    });
-    this.enemyWeaknessText.setText(weaknessStr.trim());
-  }
-
-  /**
-   * 弱点タイプから表示用アイコン（文字）を取得
-   */
-  private getWeaknessIcon(type: WeaknessType): string {
-    const icons: Record<WeaknessType, string> = {
-      sword: "剣",
-      spear: "槍",
-      dagger: "短",
-      axe: "斧",
-      bow: "弓",
-      staff: "杖",
-      fire: "火",
-      ice: "氷",
-      lightning: "雷",
-      wind: "風",
-      light: "光",
-      dark: "闇",
-    };
-    return icons[type] || "?";
+    // 弱点表示（BattleUtils関数を使用）
+    const weaknessStr = formatWeaknessDisplay(
+      this.enemy.weaknesses,
+      this.enemy.revealedWeaknesses
+    );
+    this.enemyWeaknessText.setText(weaknessStr);
   }
 
   /**
@@ -1428,13 +1290,13 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // ダメージ計算（改善版）- アクティブなメンバーの攻撃力を使用
-    const { damage, isCritical } = this.calculateDamage(
-      activeMember.attack,
-      this.enemy.defense,
-      false,
+    const { damage, isCritical } = calculateDamage({
+      attack: activeMember.attack,
+      defense: this.enemy.defense,
+      isDefending: false,
       weaknessMultiplier,
-      this.enemy.isBroken,
-    );
+      isBroken: this.enemy.isBroken,
+    });
 
     // パーティメンバーを攻撃ポーズに切り替え
     const sprite = this.partySprites[idx];
@@ -1613,11 +1475,11 @@ export class BattleScene extends Phaser.Scene {
     const targetSprite = this.partySprites[targetData.index];
 
     // ダメージ計算（改善版）
-    const { damage, isCritical } = this.calculateDamage(
-      this.enemy.attack,
-      targetMember.defense,
-      targetMember.isDefending,
-    );
+    const { damage, isCritical } = calculateDamage({
+      attack: this.enemy.attack,
+      defense: targetMember.defense,
+      isDefending: targetMember.isDefending,
+    });
 
     targetMember.hp -= damage;
 
@@ -1888,13 +1750,13 @@ export class BattleScene extends Phaser.Scene {
         // ここでは簡易実装として、物理ダメージスキルとして処理。
 
         // ダメージ計算
-        let { damage, isCritical: randCrit } = this.calculateDamage(
-          activeMember.attack,
-          this.enemy.defense,
-          false,
-          1.0, // 弱点補正は別途乗るかも？スキル属性が必要だが、MVPではなし
-          this.enemy.isBroken
-        );
+        let { damage, isCritical: randCrit } = calculateDamage({
+          attack: activeMember.attack,
+          defense: this.enemy.defense,
+          isDefending: false,
+          weaknessMultiplier: 1.0, // 弱点補正は別途乗るかも？スキル属性が必要だが、MVPではなし
+          isBroken: this.enemy.isBroken,
+        });
 
         damage = Math.floor(damage * multiplier);
         if (isCrit) {
@@ -2037,51 +1899,6 @@ export class BattleScene extends Phaser.Scene {
       this.currentAction = { type: 'attack' }; // default
       this.targetScope = 'single_enemy';
     }
-  }
-
-  /**
-   * ダメージ計算（改善版）
-   * - 基本ダメージ = 攻撃力 - 防御力/2
-   * - 乱数 0.9〜1.1倍
-   * - クリティカル 15%で1.5倍
-   */
-  private calculateDamage(
-    attack: number,
-    defense: number,
-    isDefending: boolean,
-    weaknessMultiplier: number = 1.0,
-    isBroken: boolean = false,
-  ): { damage: number; isCritical: boolean } {
-    // 基本ダメージ
-    let baseDamage = attack - Math.floor(defense / 2);
-
-    // 乱数（0.9〜1.1倍）
-    const randomMultiplier = 0.9 + Math.random() * 0.2;
-    baseDamage = Math.floor(baseDamage * randomMultiplier);
-
-    // 弱点ボーナス
-    baseDamage = Math.floor(baseDamage * weaknessMultiplier);
-
-    // クリティカル判定（15%）
-    const isCritical = Math.random() < 0.15;
-    if (isCritical) {
-      baseDamage = Math.floor(baseDamage * 1.5);
-    }
-
-    // ブレイクボーナス（2倍）
-    if (isBroken) {
-      baseDamage = Math.floor(baseDamage * 2.0);
-    }
-
-    // 防御中は半減
-    if (isDefending) {
-      baseDamage = Math.floor(baseDamage / 2);
-    }
-
-    // 最低1ダメージ保証
-    const damage = Math.max(1, baseDamage);
-
-    return { damage, isCritical };
   }
 
   /**
