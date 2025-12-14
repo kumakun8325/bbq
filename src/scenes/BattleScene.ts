@@ -1355,25 +1355,30 @@ export class BattleScene extends Phaser.Scene {
         const x = this.enemySprite.x;
         const y = this.enemySprite.y;
 
-        // 10個の破片を生成
-        for (let i = 0; i < 10; i++) {
+        // 16個の破片を生成
+        for (let i = 0; i < 16; i++) {
             const angle = Phaser.Math.Between(0, 360);
-            const speed = Phaser.Math.Between(50, 150);
+            const speed = Phaser.Math.Between(100, 200); // 速度アップ
             const rotation = Phaser.Math.Between(0, 360);
 
             // 破片の形状（三角形）
             const shard = this.add.graphics();
             shard.fillStyle(0x60a5fa, 1); // シールド色（青）
+            shard.lineStyle(1, 0xffffff, 0.8); // 白い縁取り
 
-            // ランダムな形状の三角形
-            const p1 = { x: Phaser.Math.Between(-8, 8), y: Phaser.Math.Between(-8, 8) };
-            const p2 = { x: Phaser.Math.Between(-8, 8), y: Phaser.Math.Between(-8, 8) };
-            const p3 = { x: Phaser.Math.Between(-8, 8), y: Phaser.Math.Between(-8, 8) };
+            // ランダムな形状の三角形（サイズ調整）
+            const s = 6; // 基本サイズ
+            const p1 = { x: Phaser.Math.Between(-s, s), y: Phaser.Math.Between(-s, s) };
+            const p2 = { x: Phaser.Math.Between(-s, s), y: Phaser.Math.Between(-s, s) };
+            const p3 = { x: Phaser.Math.Between(-s, s), y: Phaser.Math.Between(-s, s) };
 
             shard.fillTriangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+            shard.strokeTriangle(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+
             shard.x = x;
             shard.y = y;
-            shard.setDepth(150);
+            shard.setScale(3); // ピクセルアートに合わせて拡大
+            shard.setDepth(250); // 最前面に近く
 
             // 飛び散るアニメーション
             const rad = Phaser.Math.DegToRad(angle);
