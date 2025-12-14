@@ -573,6 +573,11 @@ export class BattleScene extends Phaser.Scene {
                 rowY,
                 hpStr,
                 {
+                    fontFamily: '"Press Start 2P", monospace',
+                    fontSize: '16px',
+                    color: '#ffffff',
+                    shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 0, fill: true }
+                }
             );
             this.partyHpTexts.push(hpText);
 
@@ -1382,16 +1387,19 @@ export class BattleScene extends Phaser.Scene {
      * メッセージを表示
      */
     private showMessage(text: string): void {
-        this.messageText.setText(text);
+        if (this.messageText) {
+            this.messageText.setText(text);
+            this.messageText.setVisible(!!text); // テキストがある時だけ表示
+        }
     }
 
     /**
      * HP表示を更新
      */
     private updateHpDisplay(): void {
-        // FF6風UIの座標（解像度2倍）
-        const uiY = GAME_HEIGHT - 180;
-        const statusX = 230;
+        const margin = 10;
+        // createUIと同じロジック不要なら partyHpTextsにアクセスするだけだが
+        // setTextだけなのでpositionは関係ないはず。
 
         // テキスト更新（FF6風：HP数値のみ）- 各メンバーのHPを更新
         // テキスト更新 (Current/Max HP) Suffix space padding for alignment
@@ -1661,9 +1669,15 @@ export class BattleScene extends Phaser.Scene {
         }
 
         // waiting状態: ATBを更新してターン開始判定
-        const uiY = GAME_HEIGHT - 180;
-        const statusX = 230;
-        const memberHeight = 40;
+        const margin = 10;
+        const uiY = GAME_HEIGHT - 150;
+        const gap = 4;
+        const totalWidth = GAME_WIDTH - (margin * 2);
+        const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+        const partyWindowX = margin + enemyWindowWidth + gap;
+        const atbRelX = 350;
+        const atbWidth = 100;
+        const rowHeight = 32;
 
         // === パーティメンバーのATB回復 ===
         for (let i = 0; i < this.partyCount; i++) {
@@ -1682,13 +1696,15 @@ export class BattleScene extends Phaser.Scene {
                 member.atb = Math.min(member.maxAtb, member.atb + atbRecovery);
 
                 // ATBバーを更新
-                const rowY = uiY + 10 + (i * memberHeight);
+                const rowY = uiY + 20 + (i * rowHeight);
+                const atbAbsX = partyWindowX + atbRelX;
+
                 this.drawAtbBar(
                     this.partyAtbBars[i],
-                    statusX + 270,
-                    rowY + 4,
-                    160,
-                    20,
+                    atbAbsX + 2,
+                    rowY + 12,
+                    atbWidth - 4,
+                    6,
                     member.atb,
                     member.maxAtb
                 );
