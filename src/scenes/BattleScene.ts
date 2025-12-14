@@ -57,8 +57,8 @@ interface EnemyData {
 const ENEMY_DATABASE: Record<string, EnemyData> = {
     slime: {
         name: 'スライム',
-        hp: 120,
-        maxHp: 120,
+        hp: 500,
+        maxHp: 500,
         attack: 10,
         defense: 2,
         speed: 20,           // 低速な敵
@@ -77,8 +77,8 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
     },
     bat: {
         name: 'コウモリ',
-        hp: 80,
-        maxHp: 80,
+        hp: 350,
+        maxHp: 350,
         attack: 15,
         defense: 1,
         speed: 60,           // 素早い敵
@@ -97,8 +97,8 @@ const ENEMY_DATABASE: Record<string, EnemyData> = {
     },
     goblin: {
         name: 'ゴブリン',
-        hp: 150,
-        maxHp: 150,
+        hp: 800,
+        maxHp: 800,
         attack: 20,
         defense: 5,
         speed: 35,           // 中速な敵
@@ -550,11 +550,12 @@ export class BattleScene extends Phaser.Scene {
             const member = this.partyMembers[i];
             const rowY = uiY + 10 + (i * memberHeight);
 
-            // メンバー名
+            // メンバー名（武器種アイコン付き）
+            const weaponIcon = this.getWeaknessIcon(member.weaponType);
             this.add.text(
                 statusX + 10,
                 rowY,
-                member.name,
+                `[${weaponIcon}]${member.name}`,
                 {
                     fontFamily: '"Press Start 2P", monospace',
                     fontSize: '14px',
