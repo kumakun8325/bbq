@@ -24,6 +24,15 @@ export interface CharacterStats {
     exp: number;
 }
 
+/** キャラクター成長率（レベルアップ時のステータス上昇量） */
+export interface GrowthRates {
+    hp: number;
+    mp: number;
+    attack: number;
+    defense: number;
+    speed: number;
+}
+
 /** キャラクター定義（不変データ） */
 export interface CharacterDefinition {
     id: string;
@@ -34,6 +43,7 @@ export interface CharacterDefinition {
     defaultWeapon: WeaknessType;
     specialCommandName: string; // 固有技名
     abilityId: string; // 固有アビリティID
+    growthRates: GrowthRates; // レベルアップ時の成長率
 }
 
 /** キャラクターインスタンス（可変データ） */
@@ -128,6 +138,7 @@ export interface EnemyBattleData {
     revealedWeaknesses: boolean[];
     isBroken: boolean;
     breakStartTurn: number;
+    expReward: number;
 }
 
 /** ターゲット選択結果 */

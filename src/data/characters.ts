@@ -20,6 +20,13 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
             speed: 40,
             level: 1,
             exp: 0
+        },
+        growthRates: {
+            hp: 12,
+            mp: 3,
+            attack: 2,
+            defense: 1,
+            speed: 2
         }
     },
     daichan: {
@@ -40,6 +47,13 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
             speed: 50,
             level: 1,
             exp: 0
+        },
+        growthRates: {
+            hp: 10,
+            mp: 2,
+            attack: 3,
+            defense: 1,
+            speed: 3
         }
     },
     shinichi: {
@@ -60,6 +74,13 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
             speed: 30,
             level: 1,
             exp: 0
+        },
+        growthRates: {
+            hp: 11,
+            mp: 3,
+            attack: 2,
+            defense: 2,
+            speed: 1
         }
     },
     taisa: {
@@ -80,6 +101,13 @@ export const PLAYABLE_CHARACTERS: Record<string, CharacterDefinition> = {
             speed: 25,
             level: 1,
             exp: 0
+        },
+        growthRates: {
+            hp: 14,
+            mp: 5,
+            attack: 2,
+            defense: 1,
+            speed: 1
         }
     }
 };

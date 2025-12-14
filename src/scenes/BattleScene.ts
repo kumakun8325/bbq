@@ -837,6 +837,14 @@ export class BattleScene extends Phaser.Scene {
    * 入力ハンドリング
    */
   private handleInput(key: string): void {
+    // リザルト画面表示中はSPACE/ENTERで閉じる
+    if (this.resultWaitingForInput) {
+      if (key === 'OK') {
+        this.closeResultScreen();
+      }
+      return;
+    }
+
     if (this.battleState === 'playerTurn') {
       if (key === 'UP') this.moveCommand(-1);
       if (key === 'DOWN') this.moveCommand(1);
@@ -1565,14 +1573,245 @@ export class BattleScene extends Phaser.Scene {
       ease: "Power2",
     });
 
-    this.showMessage(
-      `${this.enemy.name}をたおした！\n10けいけんちをかくとく！`,
-    );
+    // 経験値獲得
+    const expReward = this.enemy.expReward || 10; // fallback
 
-    this.time.delayedCall(2500, () => {
-      this.endBattle();
+    this.showMessage(`${this.enemy.name}をたおした！`);
+
+    // 経験値付与とリザルト画面表示
+    this.time.delayedCall(1500, () => {
+      this.processExperienceAndShowResult(expReward);
     });
   }
+
+  // リザルト画面用のUI要素
+  private resultWindowGraphics: Phaser.GameObjects.Graphics | null = null;
+  private resultTexts: Phaser.GameObjects.Text[] = [];
+  private resultWaitingForInput: boolean = false;
+
+  /**
+   * 経験値付与とリザルト画面表示
+   */
+  private processExperienceAndShowResult(expReward: number): void {
+    // ローカルのパーティメンバー状態をグローバルに反映（HP/MPなど）
+    const globalParty = GameStateManager.getInstance().getParty();
+    this.partyMembers.forEach((localMember, index) => {
+      if (globalParty[index]) {
+        globalParty[index].currentHp = localMember.hp;
+        globalParty[index].currentMp = localMember.mp;
+        globalParty[index].isDead = localMember.hp <= 0;
+      }
+    });
+
+    // 経験値付与前のレベルを保存
+    const preLevels = globalParty.map(m => m.currentStats.level);
+
+    // 経験値付与
+    const expResults = GameStateManager.getInstance().awardExperience(expReward);
+
+    // リザルト画面を表示
+    this.showResultScreen(expReward, expResults, preLevels);
+  }
+
+  /**
+   * FF6風リザルト画面を表示
+   */
+  private showResultScreen(
+    expReward: number,
+    expResults: { memberId: string; memberName: string; expGained: number; levelUpResult: { newLevel: number; statGains: { hp: number; mp: number; attack: number; defense: number; speed: number } } | null }[],
+    preLevels: number[]
+  ): void {
+    // メッセージを非表示
+    this.showMessage("");
+
+    // リザルトウィンドウの位置とサイズ
+    const windowWidth = 420;
+    const windowHeight = 210;  // 高さを増やしてたいさまで収まるように
+    const windowX = (GAME_WIDTH - windowWidth) / 2;
+    const windowY = (GAME_HEIGHT - windowHeight) / 2;
+
+    // ウィンドウ背景を描画
+    this.resultWindowGraphics = this.add.graphics();
+    this.resultWindowGraphics.setDepth(500);
+
+    // 外枠（白）
+    this.resultWindowGraphics.fillStyle(0xffffff, 1);
+    this.resultWindowGraphics.fillRoundedRect(windowX - 2, windowY - 2, windowWidth + 4, windowHeight + 4, 4);
+
+    // 背景（青グラデーション風）
+    this.resultWindowGraphics.fillStyle(0x1a1a4e, 1);
+    this.resultWindowGraphics.fillRoundedRect(windowX, windowY, windowWidth, windowHeight, 4);
+
+    // 内側の区切り線（4人分のキャラが入るように高さを調整）
+    this.resultWindowGraphics.lineStyle(2, 0xffffff, 0.5);
+    this.resultWindowGraphics.strokeRect(windowX + 10, windowY + 40, windowWidth - 20, windowHeight - 70);
+
+    const textStyle = {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: "12px",
+      color: "#ffffff",
+    };
+
+    const labelStyle = {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: "10px",
+      color: "#aaaaaa",
+    };
+
+    const levelUpStyle = {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: "12px",
+      color: "#ffff00", // 黄色
+    };
+
+    // ヘッダー: 獲得経験値
+    const headerText = this.add.text(
+      windowX + 20,
+      windowY + 15,
+      `獲得経験値`,
+      labelStyle
+    );
+    headerText.setDepth(501);
+    this.resultTexts.push(headerText);
+
+    const expValueText = this.add.text(
+      windowX + 150,
+      windowY + 12,
+      `${expReward}`,
+      textStyle
+    );
+    expValueText.setDepth(501);
+    this.resultTexts.push(expValueText);
+
+    // カラムヘッダー
+    const colHeaderExp = this.add.text(windowX + 160, windowY + 45, "経験値", labelStyle);
+    colHeaderExp.setDepth(501);
+    this.resultTexts.push(colHeaderExp);
+
+    const colHeaderNext = this.add.text(windowX + 310, windowY + 45, "NEXT", labelStyle);
+    colHeaderNext.setDepth(501);
+    this.resultTexts.push(colHeaderNext);
+
+    // 各キャラクターの情報
+    const globalParty = GameStateManager.getInstance().getParty();
+    const rowHeight = 26;
+    const startY = windowY + 65;
+
+    expResults.forEach((result, index) => {
+      const y = startY + index * rowHeight;
+      const member = globalParty[index];
+
+      // 戦闘不能は暗く表示
+      const isDead = result.expGained === 0;
+      const nameColor = isDead ? "#666666" : "#ffffff";
+      const valueColor = isDead ? "#666666" : "#ffffff";
+
+      // キャラ名
+      const nameText = this.add.text(
+        windowX + 20,
+        y,
+        result.memberName,
+        { ...textStyle, color: nameColor }
+      );
+      nameText.setDepth(501);
+      this.resultTexts.push(nameText);
+
+      // 現在経験値
+      const currentExp = member.currentStats.exp;
+      const expText = this.add.text(
+        windowX + 160,
+        y,
+        isDead ? "---" : `${currentExp}`,
+        { ...textStyle, color: valueColor }
+      );
+      expText.setDepth(501);
+      this.resultTexts.push(expText);
+
+      // NEXT または LEVEL UP
+      if (result.levelUpResult) {
+        // レベルアップした！
+        const levelUpText = this.add.text(
+          windowX + 290,
+          y,
+          "LEVEL UP",
+          levelUpStyle
+        );
+        levelUpText.setDepth(501);
+        this.resultTexts.push(levelUpText);
+
+        // 点滅アニメーション
+        this.tweens.add({
+          targets: levelUpText,
+          alpha: 0.3,
+          duration: 400,
+          yoyo: true,
+          repeat: -1
+        });
+      } else {
+        // 次のレベルまでの経験値
+        const { getExpToNextLevel } = require('@/systems/LevelUpSystem');
+        const nextExp = getExpToNextLevel(member.currentStats.level, member.currentStats.exp);
+        const nextText = this.add.text(
+          windowX + 310,
+          y,
+          isDead ? "---" : `${nextExp}`,
+          { ...textStyle, color: valueColor }
+        );
+        nextText.setDepth(501);
+        this.resultTexts.push(nextText);
+      }
+    });
+
+    // 「Press any key to continue」表示
+    const continueText = this.add.text(
+      GAME_WIDTH / 2,
+      windowY + windowHeight - 15,
+      "Press SPACE to continue",
+      { ...labelStyle, fontSize: "8px" }
+    );
+    continueText.setOrigin(0.5);
+    continueText.setDepth(501);
+    this.resultTexts.push(continueText);
+
+    // 点滅
+    this.tweens.add({
+      targets: continueText,
+      alpha: 0.3,
+      duration: 500,
+      yoyo: true,
+      repeat: -1
+    });
+
+    // レベルアップしたメンバーがいたら画面フラッシュ
+    const hasLevelUp = expResults.some(r => r.levelUpResult !== null);
+    if (hasLevelUp) {
+      this.cameras.main.flash(300, 255, 255, 200);
+    }
+
+    // 入力待ちフラグ
+    this.resultWaitingForInput = true;
+  }
+
+  /**
+   * リザルト画面を閉じてバトル終了
+   */
+  private closeResultScreen(): void {
+    if (!this.resultWaitingForInput) return;
+
+    this.resultWaitingForInput = false;
+
+    // UIをクリーンアップ
+    if (this.resultWindowGraphics) {
+      this.resultWindowGraphics.destroy();
+      this.resultWindowGraphics = null;
+    }
+    this.resultTexts.forEach(t => t.destroy());
+    this.resultTexts = [];
+
+    // バトル終了
+    this.endBattle();
+  }
+
 
   /**
    * 敗北

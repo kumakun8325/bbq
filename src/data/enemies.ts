@@ -8,8 +8,8 @@ import { EnemyBattleData } from '@/types';
 export const ENEMY_DATABASE: Record<string, EnemyBattleData> = {
     slime: {
         name: "スライム",
-        hp: 500,
-        maxHp: 500,
+        hp: 50,  // テスト用に低く設定（本来500）
+        maxHp: 50,
         attack: 10,
         defense: 2,
         speed: 20, // 低速な敵
@@ -25,11 +25,12 @@ export const ENEMY_DATABASE: Record<string, EnemyBattleData> = {
         revealedWeaknesses: [false, false],
         isBroken: false,
         breakStartTurn: 0,
+        expReward: 15,
     },
     bat: {
         name: "コウモリ",
-        hp: 350,
-        maxHp: 350,
+        hp: 35,  // テスト用に低く設定（本来350）
+        maxHp: 35,
         attack: 15,
         defense: 1,
         speed: 60, // 素早い敵
@@ -45,11 +46,12 @@ export const ENEMY_DATABASE: Record<string, EnemyBattleData> = {
         revealedWeaknesses: [false, false],
         isBroken: false,
         breakStartTurn: 0,
+        expReward: 12,
     },
     goblin: {
         name: "ゴブリン",
-        hp: 800,
-        maxHp: 800,
+        hp: 80,  // テスト用に低く設定（本来800）
+        maxHp: 80,
         attack: 20,
         defense: 5,
         speed: 35, // 中速な敵
@@ -65,6 +67,7 @@ export const ENEMY_DATABASE: Record<string, EnemyBattleData> = {
         revealedWeaknesses: [false, false, false],
         isBroken: false,
         breakStartTurn: 0,
+        expReward: 25,
     },
 };
 

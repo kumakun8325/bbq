@@ -1,6 +1,15 @@
 
 import { CharacterInstance, GameProgress } from '@/types';
 import { PLAYABLE_CHARACTERS } from '@/data/characters';
+import { applyExperience, LevelUpResult } from '@/systems/LevelUpSystem';
+
+/** 経験値付与結果（各メンバーごと） */
+export interface ExperienceResult {
+    memberId: string;
+    memberName: string;
+    expGained: number;
+    levelUpResult: LevelUpResult | null;
+}
 
 export class GameStateManager {
     private static instance: GameStateManager;
@@ -64,9 +73,48 @@ export class GameStateManager {
                 member.currentHp = updated.currentHp;
                 member.currentMp = updated.currentMp;
                 member.isDead = updated.currentHp <= 0;
-                // 将来的にはEXP、レベルアップ処理もここで行う
+                // 経験値とステータスも同期
+                member.currentStats = { ...updated.currentStats };
             }
         });
+    }
+
+    /**
+     * 経験値を生存メンバーに付与し、レベルアップ判定を行う
+     * @param expAmount 獲得経験値
+     * @returns 各メンバーの経験値獲得・レベルアップ結果
+     */
+    public awardExperience(expAmount: number): ExperienceResult[] {
+        const results: ExperienceResult[] = [];
+
+        this.party.forEach(member => {
+            // 戦闘不能メンバーは経験値獲得なし
+            if (member.isDead || member.currentHp <= 0) {
+                results.push({
+                    memberId: member.id,
+                    memberName: member.name,
+                    expGained: 0,
+                    levelUpResult: null
+                });
+                return;
+            }
+
+            // 経験値付与とレベルアップ判定
+            const levelUpResult = applyExperience(
+                member,
+                expAmount,
+                member.growthRates
+            );
+
+            results.push({
+                memberId: member.id,
+                memberName: member.name,
+                expGained: expAmount,
+                levelUpResult
+            });
+        });
+
+        return results;
     }
 
     /**
