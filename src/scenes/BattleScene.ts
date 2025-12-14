@@ -573,53 +573,31 @@ export class BattleScene extends Phaser.Scene {
                 rowY,
                 hpStr,
                 {
-                    fontFamily: '"Press Start 2P", monospace',
-                    fontSize: '16px',
-                    color: '#ffffff',
-                    shadow: { offsetX: 2, offsetY: 2, color: '#000', blur: 0, fill: true }
-                }
             );
             this.partyHpTexts.push(hpText);
 
             // ATBゲージ
             const atbAbsX = partyWindowX + atbRelX;
 
-            // 枠
+            // 枠 (SFC風: 濃いグレーの背景に明るい枠)
             const atbFrame = this.add.graphics();
+            // 背景色（暗い色）
+            atbFrame.fillStyle(0x222222, 1);
+            atbFrame.fillRoundedRect(atbAbsX, rowY + 10, atbWidth, 10, 4);
+            // 枠線（明るいグレー）
             atbFrame.lineStyle(2, 0xaaaaaa, 1);
-            atbFrame.strokeRoundedRect(atbAbsX, rowY + 6, atbWidth, 12, 6);
+            atbFrame.strokeRoundedRect(atbAbsX, rowY + 10, atbWidth, 10, 4);
 
             // ゲージ本体
             const atbBar = this.add.graphics();
-            this.drawAtbBar(atbBar, atbAbsX + 2, rowY + 8, atbWidth - 4, 8, member.atb, member.maxAtb);
+            // ゲージ位置も枠内に収めるため調整
+            this.drawAtbBar(atbBar, atbAbsX + 2, rowY + 12, atbWidth - 4, 6, member.atb, member.maxAtb);
             this.partyAtbBars.push(atbBar);
         }
 
         // 互換性のため
         this.playerHpText = this.partyHpTexts[0];
 
-        // メッセージテキスト（画面上部中央）
-        this.messageText = this.add.text(
-            GAME_WIDTH / 2,
-            40,
-            '',
-            {
-                fontFamily: '"Press Start 2P", monospace',
-                fontSize: '18px',
-                color: '#ffffff',
-                backgroundColor: '#000044aa',
-                padding: { x: 20, y: 10 }
-            }
-        );
-        this.messageText.setOrigin(0.5);
-        this.messageText.setScrollFactor(0);
-        this.messageText.setDepth(1000);
-        this.messageText.visible = false; // 初期非表示
-
-        this.messageText.setStroke('#aaaaaa', 2);
-
-
-        // コマンドウィンドウ（初期は非表示のコンテナとして作成推奨だが、今回は既存ロジック流用で動的に描画）
         // createUIでは初期化のみ
 
         // ターン数表示
@@ -833,16 +811,25 @@ export class BattleScene extends Phaser.Scene {
         const ratio = Math.max(0, Math.min(1, current / max));
         const barWidth = width * ratio;
 
-        // ATBゲージは緑色（満タンに近いほど明るい）
-        const color = ratio >= 1 ? 0x4ade80 : 0x22c55e;
+        // ATBゲージの色（SFC風：通常は茶色っぽいオレンジ、満タンに近いと黄色/白っぽく光る）
+        // 参考画像を見ると、満タン時は黄色で、溜まっている途中は少し暗い色、基本は白っぽい？
+        // 動画のアルテマウェポン戦を見ると、溜まる途中は「白/薄いグレー」で、満タンになると「黄色/オレンジ」に点滅しているように見える
+        // 別の画像では茶色ベースに黄色い線。
+        // ここでは「溜め途中：白」「満タン：黄色」として実装する
 
-        // ATBゲージを描画
-        graphics.fillStyle(color, 1);
-        graphics.fillRect(x, y, barWidth, height);
+        const isFull = ratio >= 1;
+        const baseColor = isFull ? 0xffcc00 : 0xffffff; // 満タン: 黄色, 途中: 白
+        const glowColor = isFull ? 0xffffaa : 0xaaaaaa;
 
-        // 光沢効果
-        graphics.fillStyle(0xffffff, 0.3);
-        graphics.fillRect(x, y, barWidth, height / 3);
+        if (barWidth > 0) {
+            // ゲージ本体
+            graphics.fillStyle(baseColor, 1);
+            graphics.fillRect(x, y, barWidth, height);
+
+            // 中心に光沢ラインを入れる（より細く）
+            graphics.fillStyle(glowColor, 0.8);
+            graphics.fillRect(x, y + height / 2 - 1, barWidth, 2);
+        }
     }
 
     /**
