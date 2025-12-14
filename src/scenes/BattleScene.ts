@@ -80,6 +80,11 @@ export class BattleScene extends Phaser.Scene {
   private turnText!: Phaser.GameObjects.Text;
   private actedPartyMemberIndices: Set<number> = new Set(); // 今のターンに行動済みのメンバーインデックス
 
+  // ATB満タン時刻記録（満タンになった順に行動させるため）
+  // 値が小さいほど先に満タンになった = 先に行動する
+  private atbFullTimestamps: number[] = []; // 各メンバーがATB満タンになった時刻（0 = まだ満タンでない）
+  private frameCounter: number = 0; // フレームカウンター
+
   // アイテム・スキル選択用
   private tempCommandStack: { state: BattleState, commandPage: string, selected: number }[] = []; // 戻る用スタック
   private selectedItemIndex: number = 0;
@@ -150,9 +155,14 @@ export class BattleScene extends Phaser.Scene {
       member.isDefending = false;
     }
     this.enemy.atb = Phaser.Math.Between(30, 70);
+
     // ターン数リセット
     this.turnCount = 1;
     this.actedPartyMemberIndices.clear();
+
+    // ATB満タン時刻記録を初期化
+    this.atbFullTimestamps = new Array(this.partyCount).fill(0);
+    this.frameCounter = 0;
   }
 
   create(): void {
@@ -455,9 +465,8 @@ export class BattleScene extends Phaser.Scene {
         shadow: { offsetX: 2, offsetY: 2, color: "#000", blur: 0, fill: true },
       });
 
-      // HP (数値) HP: 123
-      const hpStr = `HP ${member.hp}`.padEnd(7, " ");
-      // const hpStr = `${member.hp}`.padStart(4, " ") + "/" + `${member.maxHp}`.padStart(4, " ");
+      // HP (現在値/最大値)
+      const hpStr = `${member.hp}/${member.maxHp}`;
       const hpText = this.add.text(partyWindowX + hpRelX, rowY, hpStr, {
         fontFamily: '"Press Start 2P", monospace',
         fontSize: "14px",
@@ -1158,8 +1167,8 @@ export class BattleScene extends Phaser.Scene {
           this.readyArrows[i].setFlipX(false);
           this.readyArrows[i].setOrigin(1, 0.5);
           this.readyArrows[i].setPosition(
-            sprite.x - sprite.width / 2 - 5,
-            sprite.y - sprite.height / 2
+            sprite.x - 30,  // キャラの左側（くちばしの前）
+            sprite.y - 0    // キャラより少し下（くちばし高さ）
           );
           this.readyArrows[i].setVisible(true);
           this.readyArrows[i].setScale(2);
@@ -1177,8 +1186,9 @@ export class BattleScene extends Phaser.Scene {
     // all_allies用に表示していた矢印も非表示に（元のテクスチャに戻す）
     for (let i = 0; i < this.readyArrows.length; i++) {
       if (this.readyArrows[i]) {
-        this.readyArrows[i].setTexture('atb-ready-arrow');
-        this.readyArrows[i].setScale(3);
+        this.readyArrows[i].setTexture('arrow-down');
+        this.readyArrows[i].setOrigin(0.5, 0); // 元の設定に戻す
+        this.readyArrows[i].setScale(2); // 元のスケールに戻す
         this.readyArrows[i].setVisible(false);
       }
     }
@@ -1190,38 +1200,11 @@ export class BattleScene extends Phaser.Scene {
   private startPlayerTurn(): void {
     this.battleState = "playerTurn";
 
-    // ターン経過判定（全員が一巡したらターン更新）
-    // 現状の生存メンバー全員が行動済みかチェック
-    const livingMembersIndices = this.partyMembers
-      .map((m, i) => ({ hp: m.hp, index: i }))
-      .filter((item) => item.hp > 0)
-      .map((item) => item.index);
-
-    // 生存メンバー全員が既に行動済みリストに含まれている状態で、かつ
-    // 今回行動するメンバーも既に行動済みの場合（＝2巡目に入った）
-    // または、全員が行動済みになったタイミングでターンを進める？
-    // ユーザー要望:「4人が一巡したら1ターン」「また次の誰かの番が回ってきたらターンが進みます」
-
-    // ロジック:
-    // 1. 今回行動するメンバーが、既に actedPartyMemberIndices に含まれているかチェック
-    //    含まれているなら、それは "新しい巡" の始まりとみなせる（全員が動いたかは別として、この人は2回目）
-    //    ただし "4人が一巡したら" なので、全員完了チェックも必要。
-
-    // シンプルな実装:
-    // 生存者全員が actedPartyMemberIndices に入っているなら、ターン更新してクリア
-    const allLivingActed = livingMembersIndices.every((i) =>
-      this.actedPartyMemberIndices.has(i),
-    );
-
-    if (allLivingActed) {
-      this.turnCount++;
-      this.turnText.setText(`TURN: ${this.turnCount}`);
-      this.actedPartyMemberIndices.clear();
-    }
-
     // このメンバーを行動済みに記録
     if (this.activePartyMemberIndex >= 0) {
       this.actedPartyMemberIndices.add(this.activePartyMemberIndex);
+      // ATB満タン時刻をリセット（次回ゲージ満タン時に新しいタイムスタンプが付く）
+      this.atbFullTimestamps[this.activePartyMemberIndex] = 0;
     }
 
     // アクティブメンバーの防御フラグをリセット
@@ -1230,11 +1213,9 @@ export class BattleScene extends Phaser.Scene {
       this.activePartyMemberIndex >= 0 ? this.activePartyMemberIndex : 0
       ];
     activeMember.isDefending = false;
-    // アクティブメンバーの固有技名を取得してコマンドウィンドウ更新
-    this.commandPage = "main"; // ターン開始時は必ずメイン
-    this.updateCommandWindow();
 
-    this.commandPage = "main"; // ターン開始時は必ずメイン
+    // コマンドウィンドウ更新
+    this.commandPage = "main";
     this.updateCommandWindow();
 
     // ターン開始メッセージは出さない（SFC版準拠）
@@ -1563,6 +1544,17 @@ export class BattleScene extends Phaser.Scene {
   private victory(): void {
     this.battleState = "victory";
 
+    // ブレイクエフェクトを消す
+    this.breakText.setVisible(false);
+    this.stunStars.forEach((star) => star.setVisible(false));
+    if (this.stunTween) {
+      this.stunTween.stop();
+    }
+
+    // シールドと弱点テキストも消す
+    this.enemyShieldText.setVisible(false);
+    this.enemyWeaknessText.setVisible(false);
+
     // 敵の消滅アニメーション
     this.tweens.add({
       targets: this.enemySprite,
@@ -1605,6 +1597,7 @@ export class BattleScene extends Phaser.Scene {
     this.partyMembers.forEach((localMember, index) => {
       if (globalParty[index]) {
         globalParty[index].currentHp = localMember.hp;
+        globalParty[index].currentMp = localMember.mp; // MPも保存
         // 戦闘不能状態の更新
         globalParty[index].isDead = localMember.hp <= 0;
       }
@@ -1686,10 +1679,7 @@ export class BattleScene extends Phaser.Scene {
       // HP更新
       const hpText = this.partyHpTexts[i];
       if (hpText && hpText.active) {
-        const hpStr =
-          `${member.hp}`.padStart(4, " ") +
-          "/" +
-          `${member.maxHp}`.padStart(4, " ");
+        const hpStr = `${member.hp}/${member.maxHp}`;
         hpText.setText(hpStr);
       }
 
@@ -1976,27 +1966,27 @@ export class BattleScene extends Phaser.Scene {
     this.breakText.setScale(0);
     this.breakText.setAlpha(1);
 
-    // テキストのポップアニメーション
+    // テキストのポップアニメーション（控えめに）
     this.tweens.add({
       targets: this.breakText,
-      scaleX: 1.5,
-      scaleY: 1.5,
-      duration: 300,
+      scaleX: 1.2,
+      scaleY: 1.2,
+      duration: 200,
       ease: "Back.out",
       onComplete: () => {
         this.tweens.add({
           targets: this.breakText,
           scaleX: 1.0,
           scaleY: 1.0,
-          duration: 200,
+          duration: 150,
           ease: "Sine.out",
           onComplete: () => {
             // 少し表示してからフェードアウト
             this.tweens.add({
               targets: this.breakText,
               alpha: 0,
-              duration: 500,
-              delay: 1000,
+              duration: 400,
+              delay: 800,
               onComplete: () => {
                 this.breakText.setVisible(false);
               },
@@ -2006,19 +1996,16 @@ export class BattleScene extends Phaser.Scene {
       },
     });
 
-    // シールド破壊エフェクト
-    this.playShieldBreakEffect();
+    // 画面揺れ（控えめに）
+    this.cameras.main.shake(200, 0.015);
 
-    // 画面揺れ（激しく）
-    this.cameras.main.shake(500, 0.03);
-
-    // 敵のフラッシュ
+    // 敵のフラッシュ（控えめに）
     this.tweens.add({
       targets: this.enemySprite,
-      alpha: 0.5,
-      duration: 100,
+      alpha: 0.6,
+      duration: 80,
       yoyo: true,
-      repeat: 5,
+      repeat: 2,
     });
 
     // 敵の色を暗くする（スタン表現）
@@ -2142,6 +2129,9 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
+    // フレームカウンター更新
+    this.frameCounter++;
+
     // waiting状態: ATBを更新してターン開始判定
     const margin = 10;
     const uiY = GAME_HEIGHT - 150;
@@ -2160,6 +2150,7 @@ export class BattleScene extends Phaser.Scene {
       // 戦闘不能チェック
       if (member.hp <= 0) {
         member.atb = 0;
+        this.atbFullTimestamps[i] = 0; // 戦闘不能時はリセット
         continue;
       }
 
@@ -2168,7 +2159,13 @@ export class BattleScene extends Phaser.Scene {
         // 設計書3.5.2: ATB回復速度 = (baseSpeed + characterSpeed/100)
         const atbRecovery =
           BATTLE_SYSTEM.ATB_BASE_SPEED + member.speed / BATTLE_SYSTEM.ATB_SPEED_DIVISOR;
+        const oldAtb = member.atb;
         member.atb = Math.min(member.maxAtb, member.atb + atbRecovery);
+
+        // ATBが今回満タンになった場合、タイムスタンプを記録
+        if (oldAtb < member.maxAtb && member.atb >= member.maxAtb && this.atbFullTimestamps[i] === 0) {
+          this.atbFullTimestamps[i] = this.frameCounter;
+        }
       }
 
       // ATBバーを更新（満タンでも常に描画）
@@ -2186,7 +2183,8 @@ export class BattleScene extends Phaser.Scene {
       );
 
       // ATB満タン矢印の更新（キャラの上に下向き矢印）
-      if (this.readyArrows[i]) {
+      // ただし、ターゲット選択中（all_allies）は updateTargetCursor で制御するのでスキップ
+      if (this.readyArrows[i] && !(this.battleState === 'selectTarget' && this.targetScope === 'all_allies')) {
         const sprite = this.partySprites[i];
         if (sprite && member.hp > 0 && member.atb >= member.maxAtb) {
           // キャラの頭上に下向き矢印を表示
@@ -2222,16 +2220,50 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    // パーティメンバーでATBが満タンで、かつ今ターン未行動のキャラがいればプレイヤーターン
-    const readyMemberIndex = this.partyMembers.findIndex(
-      (m, i) =>
-        m.hp > 0 &&
-        m.atb >= m.maxAtb &&
-        !this.actedPartyMemberIndices.has(i), // 今ターン未行動のみ
+    // 生存しているパーティメンバーのインデックスを取得
+    const livingMemberIndices = this.partyMembers
+      .map((m, i) => ({ hp: m.hp, index: i }))
+      .filter((item) => item.hp > 0)
+      .map((item) => item.index);
+
+    // 全員が行動済みかチェック
+    const allActed = livingMemberIndices.every((i) =>
+      this.actedPartyMemberIndices.has(i)
     );
 
-    if (readyMemberIndex >= 0) {
-      this.activePartyMemberIndex = readyMemberIndex;
+    // 全員が行動済みならターンリセット
+    if (allActed && livingMemberIndices.length > 0) {
+      this.turnCount++;
+      this.turnText.setText(`TURN: ${this.turnCount}`);
+      this.actedPartyMemberIndices.clear();
+      // ATB満タン時刻をリセットし、既に満タンのキャラに新しいタイムスタンプを付与
+      this.atbFullTimestamps = this.atbFullTimestamps.map(() => 0);
+      // 既にATB満タンのキャラに即座にタイムスタンプを記録
+      for (let i = 0; i < this.partyCount; i++) {
+        const m = this.partyMembers[i];
+        if (m.hp > 0 && m.atb >= m.maxAtb) {
+          this.atbFullTimestamps[i] = this.frameCounter + i; // 同時の場合はインデックス順
+        }
+      }
+    }
+
+    // パーティメンバーでATBが満タンで、かつ今ターン未行動のキャラを抽出
+    const readyMembers = this.partyMembers
+      .map((m, i) => ({ member: m, index: i, timestamp: this.atbFullTimestamps[i] }))
+      .filter(
+        (item) =>
+          item.member.hp > 0 &&
+          item.member.atb >= item.member.maxAtb &&
+          !this.actedPartyMemberIndices.has(item.index) &&
+          item.timestamp > 0, // タイムスタンプが記録されている
+      );
+
+    // タイムスタンプ順（早い順）にソート
+    readyMembers.sort((a, b) => a.timestamp - b.timestamp);
+
+    if (readyMembers.length > 0) {
+      const firstReady = readyMembers[0];
+      this.activePartyMemberIndex = firstReady.index;
       this.startPlayerTurn();
       return;
     }
