@@ -238,6 +238,15 @@ export class BattleScene extends Phaser.Scene {
       repeat: -1,
       ease: "Sine.easeInOut",
     });
+
+    // タッチ操作対応：敵をタップでターゲット選択・決定
+    this.enemySprite.setInteractive({ useHandCursor: true });
+    this.enemySprite.on('pointerdown', () => {
+      // ターゲット選択中であれば決定
+      if (this.battleState === 'selectTarget' && this.targetScope === 'single_enemy') {
+        this.decideTarget();
+      }
+    });
   }
 
   /**
@@ -649,6 +658,19 @@ export class BattleScene extends Phaser.Scene {
         shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
       });
       text.setDepth(200);
+
+      // タッチ操作対応: テキストをインタラクティブに
+      text.setInteractive({ useHandCursor: true });
+      text.on('pointerover', () => {
+        this.selectedCommand = index;
+        this.updateCursorPosition();
+      });
+      text.on('pointerdown', () => {
+        this.selectedCommand = index;
+        this.updateCursorPosition();
+        this.handleInput('OK');
+      });
+
       this.commandTexts.push(text);
     });
   }

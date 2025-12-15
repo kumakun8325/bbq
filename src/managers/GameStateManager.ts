@@ -141,4 +141,68 @@ export class GameStateManager {
     public setMap(mapName: string): void {
         this.progress.currentMap = mapName;
     }
+
+    /**
+     * フラグを設定
+     */
+    public setFlag(key: string, value: boolean): void {
+        this.progress.flags[key] = value;
+    }
+
+    /**
+     * フラグを取得
+     */
+    public getFlag(key: string): boolean {
+        return this.progress.flags[key] || false;
+    }
+
+    /**
+     * セーブデータからパーティを復元
+     */
+    public restoreParty(savedParty: {
+        id: string;
+        currentHp: number;
+        currentMp: number;
+        isDead: boolean;
+        currentStats: {
+            hp: number;
+            maxHp: number;
+            mp: number;
+            maxMp: number;
+            attack: number;
+            defense: number;
+            speed: number;
+            level: number;
+            exp: number;
+        };
+    }[]): void {
+        // まず初期化してからデータを上書き
+        this.initializeParty();
+
+        savedParty.forEach(saved => {
+            const member = this.party.find(m => m.id === saved.id);
+            if (member) {
+                member.currentHp = saved.currentHp;
+                member.currentMp = saved.currentMp;
+                member.isDead = saved.isDead;
+                member.currentStats = { ...saved.currentStats };
+            }
+        });
+
+        console.log('Party restored from save data');
+    }
+
+    /**
+     * ゲーム状態をリセット（ニューゲーム用）
+     */
+    public reset(): void {
+        this.progress = {
+            currentMap: 'map-field01',
+            position: { x: 300, y: 300 },
+            flags: {}
+        };
+        this.initializeParty();
+        console.log('Game state reset');
+    }
 }
+

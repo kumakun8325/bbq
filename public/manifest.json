@@ -1,0 +1,22 @@
+{
+    "name": "Bird Battle Quest",
+    "short_name": "BBQ",
+    "description": "FF6 × Octopath Traveler style 2D RPG",
+    "start_url": "./index.html",
+    "display": "standalone",
+    "background_color": "#1a1a2e",
+    "theme_color": "#1a1a2e",
+    "orientation": "landscape",
+    "icons": [
+        {
+            "src": "pwa-icon.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "pwa-icon.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        }
+    ]
+}

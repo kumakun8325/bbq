@@ -1,39 +1,59 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="BBQ (Bird Battle Quest) - FF6 × オクトパストラベラー風 2D RPG">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="BBQ (Bird Battle Quest) - FF6 × Octopath Traveler style 2D RPG">
   <meta name="theme-color" content="#1a1a2e">
+
+  <!-- PWA Settings -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BBQ">
+  <link rel="apple-touch-icon" href="/pwa-icon.png">
+
   <title>BBQ - Bird Battle Quest</title>
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
+      /* スマホでの長押し選択等を無効化 */
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
     }
-    
-    html, body {
+
+    html,
+    body {
       width: 100%;
       height: 100%;
       overflow: hidden;
       background-color: #0f0f1a;
+      /* ブラウザのデフォルトタッチ操作を無効化 */
+      touch-action: none;
     }
-    
+
     #game-container {
-      width: 100%;
-      height: 100%;
+      width: 100vw;
+      height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
+      background-color: #000;
     }
-    
+
     canvas {
       display: block;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
+      /* バウンススクロール防止 */
+      touch-action: none;
+      outline: none;
     }
-    
+
     /* Loading screen */
     #loading {
       position: fixed;
@@ -49,12 +69,12 @@
       z-index: 1000;
       transition: opacity 0.5s ease-out;
     }
-    
+
     #loading.hidden {
       opacity: 0;
       pointer-events: none;
     }
-    
+
     #loading h1 {
       font-family: 'Press Start 2P', monospace, sans-serif;
       font-size: 2rem;
@@ -63,7 +83,7 @@
       margin-bottom: 2rem;
       letter-spacing: 0.2em;
     }
-    
+
     #loading .spinner {
       width: 50px;
       height: 50px;
@@ -72,11 +92,13 @@
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
-    
+
     @keyframes spin {
-      to { transform: rotate(360deg); }
+      to {
+        transform: rotate(360deg);
+      }
     }
-    
+
     #loading p {
       font-family: sans-serif;
       color: #a0a0a0;
@@ -88,6 +110,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
+
 <body>
   <div id="loading">
     <h1>BBQ</h1>
@@ -96,4 +119,5 @@
   </div>
   <div id="game-container"></div>
 </body>
+
 </html>

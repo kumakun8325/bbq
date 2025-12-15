@@ -5,6 +5,8 @@
 
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, TILE_SIZE } from '@/config/gameConfig';
+import { SaveManager, SAVE_SLOTS } from '@/managers/SaveManager';
+import { GameStateManager } from '@/managers/GameStateManager';
 
 /** プレイヤーの移動速度 */
 const PLAYER_SPEED = 80;
@@ -43,7 +45,11 @@ export class MapScene extends Phaser.Scene {
 
     // 移動状態
     private isMoving: boolean = false;
-    private currentDirection: string = 'down'; // 現在の向き
+    private currentDirection: string = 'down';
+
+    // タップ移動用（目的地まで自動で歩く）
+    private targetPosition: { x: number, y: number } | null = null;
+    private readonly ARRIVAL_THRESHOLD = 8; // 到着判定の閾値
 
     // エンカウント関連
     private stepCount: number = 0;
@@ -56,15 +62,15 @@ export class MapScene extends Phaser.Scene {
 
     // タイル色定義
     private readonly tileColors: { [key: number]: number } = {
-        0: 0x000000, // 空（透明）
-        1: 0x4a5568, // 壁（ダークグレー）
-        2: 0x22c55e, // 草地（緑）
-        3: 0x166534, // 森の地面（ダークグリーン）
-        4: 0x78350f, // 木の幹（茶色）
-        5: 0x92400e, // 建物の壁（レンガ色）
-        6: 0xfbbf24, // 建物の床（ベージュ/金色）
-        7: 0x7c2d12, // ドア（ダーク木目）
-        8: 0x15803d, // 木（緑・装飾用）
+        0: 0x000000,
+        1: 0x4a5568,
+        2: 0x22c55e,
+        3: 0x166534,
+        4: 0x78350f,
+        5: 0x92400e,
+        6: 0xfbbf24,
+        7: 0x7c2d12,
+        8: 0x15803d,
     };
 
     constructor() {
@@ -72,7 +78,6 @@ export class MapScene extends Phaser.Scene {
     }
 
     init(data: { playerPosition?: { x: number; y: number } }): void {
-        // バトルから戻ってきた場合の位置復元
         if (data.playerPosition) {
             this.lastGridX = Math.floor(data.playerPosition.x / TILE_SIZE);
             this.lastGridY = Math.floor(data.playerPosition.y / TILE_SIZE);
@@ -87,16 +92,24 @@ export class MapScene extends Phaser.Scene {
         this.createPlayer();
         this.createCollisionMap();
         this.setupInput();
+        this.setupTouchInput();
         this.setupCamera();
         this.createUI();
 
-        // フェードイン
         this.cameras.main.fadeIn(500);
     }
 
     /**
-     * マップデータをキャッシュから取得
+     * タッチ入力のセットアップ（タップした場所まで歩く）
      */
+    private setupTouchInput(): void {
+        this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+            // ワールド座標に変換
+            const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+            this.targetPosition = { x: worldPoint.x, y: worldPoint.y };
+        });
+    }
+
     private loadMapData(): void {
         const jsonData = this.cache.tilemap.get('map-field01');
         if (jsonData && jsonData.data) {
@@ -110,15 +123,11 @@ export class MapScene extends Phaser.Scene {
             };
             console.log('Map loaded:', this.mapData.width, 'x', this.mapData.height);
         } else {
-            // フォールバック: デフォルトマップ
             console.warn('Map data not found, using fallback');
             this.createFallbackMapData();
         }
     }
 
-    /**
-     * フォールバック用のマップデータを生成
-     */
     private createFallbackMapData(): void {
         const width = 30;
         const height = 20;
@@ -127,12 +136,11 @@ export class MapScene extends Phaser.Scene {
 
         for (let y = 0; y < height; y++) {
             for (let x = 0; x < width; x++) {
-                // 外周は壁
                 if (x === 0 || x === width - 1 || y === 0 || y === height - 1) {
                     groundData.push(1);
                     collisionData.push(1);
                 } else {
-                    groundData.push(2); // 草地
+                    groundData.push(2);
                     collisionData.push(0);
                 }
             }
@@ -149,9 +157,6 @@ export class MapScene extends Phaser.Scene {
         };
     }
 
-    /**
-     * マップをGraphicsで描画
-     */
     private createMapGraphics(): void {
         this.groundGraphics = this.add.graphics();
         this.groundGraphics.setDepth(0);
@@ -161,25 +166,21 @@ export class MapScene extends Phaser.Scene {
 
         if (!groundLayer) return;
 
-        // 地面レイヤーを描画
         for (let y = 0; y < this.mapData.height; y++) {
             for (let x = 0; x < this.mapData.width; x++) {
                 const index = y * this.mapData.width + x;
                 const tileId = groundLayer.data[index];
-
                 if (tileId > 0) {
                     this.drawTile(x, y, tileId);
                 }
             }
         }
 
-        // 装飾レイヤーを描画
         if (decorationLayer && decorationLayer.data.length > 0) {
             for (let y = 0; y < this.mapData.height; y++) {
                 for (let x = 0; x < this.mapData.width; x++) {
                     const index = y * this.mapData.width + x;
                     const tileId = decorationLayer.data[index];
-
                     if (tileId > 0) {
                         this.drawDecoration(x, y, tileId);
                     }
@@ -188,9 +189,6 @@ export class MapScene extends Phaser.Scene {
         }
     }
 
-    /**
-     * タイルを描画
-     */
     private drawTile(x: number, y: number, tileId: number): void {
         const color = this.tileColors[tileId] || 0x000000;
         const px = x * TILE_SIZE;
@@ -198,55 +196,44 @@ export class MapScene extends Phaser.Scene {
 
         this.groundGraphics.fillStyle(color, 1);
         this.groundGraphics.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-
-        // タイルごとの装飾
         this.addTileDecoration(tileId, px, py);
     }
 
-    /**
-     * タイルに装飾を追加
-     */
     private addTileDecoration(tileId: number, px: number, py: number): void {
         switch (tileId) {
-            case 1: // 壁 - レンガ模様
+            case 1:
                 this.groundGraphics.lineStyle(1, 0x2d3748, 0.5);
                 this.groundGraphics.lineBetween(px, py + 4, px + TILE_SIZE, py + 4);
                 this.groundGraphics.lineBetween(px, py + 8, px + TILE_SIZE, py + 8);
                 this.groundGraphics.lineBetween(px, py + 12, px + TILE_SIZE, py + 12);
                 break;
-
-            case 2: // 草地 - ランダムな草模様
+            case 2:
                 this.groundGraphics.fillStyle(0x16a34a, 0.5);
                 this.groundGraphics.fillRect(px + 3, py + 3, 2, 2);
                 this.groundGraphics.fillRect(px + 10, py + 7, 2, 2);
                 this.groundGraphics.fillRect(px + 6, py + 12, 2, 2);
                 break;
-
-            case 3: // 森の地面
+            case 3:
                 this.groundGraphics.fillStyle(0x14532d, 0.5);
                 this.groundGraphics.fillRect(px + 2, py + 5, 3, 2);
                 this.groundGraphics.fillRect(px + 9, py + 10, 3, 2);
                 break;
-
-            case 4: // 木の幹
+            case 4:
                 this.groundGraphics.fillStyle(0x451a03, 0.5);
                 this.groundGraphics.fillRect(px + 4, py + 2, 8, 12);
                 this.groundGraphics.fillStyle(0x166534, 1);
                 this.groundGraphics.fillCircle(px + 8, py + 2, 6);
                 break;
-
-            case 5: // 建物の壁
+            case 5:
                 this.groundGraphics.lineStyle(1, 0x7c2d12, 0.5);
                 this.groundGraphics.lineBetween(px, py + 5, px + TILE_SIZE, py + 5);
                 this.groundGraphics.lineBetween(px, py + 10, px + TILE_SIZE, py + 10);
                 break;
-
-            case 6: // 建物の床
+            case 6:
                 this.groundGraphics.lineStyle(1, 0xd97706, 0.3);
                 this.groundGraphics.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
                 break;
-
-            case 7: // ドア
+            case 7:
                 this.groundGraphics.fillStyle(0x451a03, 1);
                 this.groundGraphics.fillRect(px + 3, py + 2, 10, 12);
                 this.groundGraphics.fillStyle(0xfbbf24, 1);
@@ -255,15 +242,11 @@ export class MapScene extends Phaser.Scene {
         }
     }
 
-    /**
-     * 装飾を描画
-     */
     private drawDecoration(x: number, y: number, tileId: number): void {
         const px = x * TILE_SIZE;
         const py = y * TILE_SIZE;
 
         if (tileId === 8) {
-            // 木
             this.groundGraphics.fillStyle(0x78350f, 1);
             this.groundGraphics.fillRect(px + 6, py + 10, 4, 6);
             this.groundGraphics.fillStyle(0x15803d, 1);
@@ -273,9 +256,6 @@ export class MapScene extends Phaser.Scene {
         }
     }
 
-    /**
-     * 衝突マップを作成
-     */
     private createCollisionMap(): void {
         const collisionLayer = this.mapData.layers.find(l => l.name === 'collision');
         if (!collisionLayer) return;
@@ -290,51 +270,34 @@ export class MapScene extends Phaser.Scene {
         }
     }
 
-    /**
-     * プレイヤーを作成
-     */
     private createPlayer(): void {
-        // 初期位置（マップ中央付近）
         let startX = 15 * TILE_SIZE + TILE_SIZE / 2;
         let startY = 13 * TILE_SIZE + TILE_SIZE / 2;
 
-        // バトルから戻ってきた場合は前の位置を使用
         if (this.lastGridX > 0 || this.lastGridY > 0) {
             startX = this.lastGridX * TILE_SIZE + TILE_SIZE / 2;
             startY = this.lastGridY * TILE_SIZE + TILE_SIZE / 2;
         }
 
-        // プレイヤースプライト（16x24スプライトシート使用）
         this.player = this.add.sprite(startX, startY, 'player', 0);
         this.player.setDepth(10);
-
-        // スプライトのアンカーを足元に設定（16x24の下部中央）
         this.player.setOrigin(0.5, 1);
 
-        // 物理演算を有効化
         this.physics.add.existing(this.player);
         const body = this.player.body as Phaser.Physics.Arcade.Body;
-        // 衝突判定は足元のみ（12x8ピクセル）
         body.setSize(12, 8);
-        body.setOffset(2, 16); // スプライトの下部に配置
+        body.setOffset(2, 16);
 
-        // 初期グリッド位置を記録
         this.lastGridX = Math.floor(startX / TILE_SIZE);
         this.lastGridY = Math.floor(startY / TILE_SIZE);
 
-        // 初期アニメーション（下向き待機）
         this.player.play('player-idle-down');
         this.currentDirection = 'down';
     }
 
-    /**
-     * 入力のセットアップ
-     */
     private setupInput(): void {
-        // カーソルキー
         this.cursors = this.input.keyboard!.createCursorKeys();
 
-        // WASD
         this.wasd = {
             W: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.W),
             A: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.A),
@@ -342,28 +305,18 @@ export class MapScene extends Phaser.Scene {
             D: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D)
         };
 
-        // ESCでタイトルに戻る
         this.input.keyboard?.on('keydown-ESC', () => {
             this.returnToTitle();
         });
 
-        // Bキーでバトル画面へ（デバッグ用）
         this.input.keyboard?.on('keydown-B', () => {
             this.startBattle();
         });
     }
 
-    /**
-     * カメラのセットアップ
-     */
     private setupCamera(): void {
-        // カメラがプレイヤーを追従
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-
-        // ズーム
         this.cameras.main.setZoom(2);
-
-        // カメラの境界を設定
         this.cameras.main.setBounds(
             0,
             0,
@@ -372,9 +325,6 @@ export class MapScene extends Phaser.Scene {
         );
     }
 
-    /**
-     * UIを作成
-     */
     private createUI(): void {
         this.debugText = this.add.text(4, 4, '', {
             fontFamily: 'monospace',
@@ -387,41 +337,71 @@ export class MapScene extends Phaser.Scene {
         this.debugText.setDepth(1000);
     }
 
-    /**
-     * 毎フレームの更新処理
-     */
     update(): void {
         this.handleMovement();
         this.checkEncounter();
         this.updateDebugInfo();
     }
 
-    /**
-     * 移動処理（衝突判定付き）
-     */
     private handleMovement(): void {
-        const body = this.player.body as Phaser.Physics.Arcade.Body;
-
         let velocityX = 0;
         let velocityY = 0;
         let newDirection = this.currentDirection;
 
-        // 左右移動
-        if (this.cursors.left.isDown || this.wasd.A.isDown) {
-            velocityX = -PLAYER_SPEED;
-            newDirection = 'left';
-        } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
-            velocityX = PLAYER_SPEED;
-            newDirection = 'right';
+        // キーボード入力
+        const left = this.cursors.left.isDown || this.wasd.A.isDown;
+        const right = this.cursors.right.isDown || this.wasd.D.isDown;
+        const up = this.cursors.up.isDown || this.wasd.W.isDown;
+        const down = this.cursors.down.isDown || this.wasd.S.isDown;
+
+        // キーボード入力があればタップ移動をキャンセル
+        if (left || right || up || down) {
+            this.targetPosition = null;
         }
 
-        // 上下移動
-        if (this.cursors.up.isDown || this.wasd.W.isDown) {
-            velocityY = -PLAYER_SPEED;
-            newDirection = 'up';
-        } else if (this.cursors.down.isDown || this.wasd.S.isDown) {
-            velocityY = PLAYER_SPEED;
-            newDirection = 'down';
+        // タップ移動処理
+        if (this.targetPosition) {
+            const dx = this.targetPosition.x - this.player.x;
+            const dy = this.targetPosition.y - this.player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < this.ARRIVAL_THRESHOLD) {
+                // 到着
+                this.targetPosition = null;
+            } else {
+                // 目的地に向かって移動
+                const normalizedX = dx / distance;
+                const normalizedY = dy / distance;
+
+                velocityX = normalizedX * PLAYER_SPEED;
+                velocityY = normalizedY * PLAYER_SPEED;
+
+                // 方向を決定
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    newDirection = dx > 0 ? 'right' : 'left';
+                } else {
+                    newDirection = dy > 0 ? 'down' : 'up';
+                }
+            }
+        }
+
+        // キーボード入力（タップ移動がない場合）
+        if (!this.targetPosition) {
+            if (left) {
+                velocityX = -PLAYER_SPEED;
+                newDirection = 'left';
+            } else if (right) {
+                velocityX = PLAYER_SPEED;
+                newDirection = 'right';
+            }
+
+            if (up) {
+                velocityY = -PLAYER_SPEED;
+                if (velocityX === 0) newDirection = 'up';
+            } else if (down) {
+                velocityY = PLAYER_SPEED;
+                if (velocityX === 0) newDirection = 'down';
+            }
         }
 
         // 斜め移動の正規化
@@ -434,65 +414,53 @@ export class MapScene extends Phaser.Scene {
         const nextX = this.player.x + velocityX * 0.016;
         const nextY = this.player.y + velocityY * 0.016;
 
-        const nextGridX = Math.floor(nextX / TILE_SIZE);
-        const nextGridY = Math.floor(nextY / TILE_SIZE);
-
-        // X方向の衝突チェック
         if (velocityX !== 0) {
             const checkX = velocityX > 0
                 ? Math.floor((nextX + 6) / TILE_SIZE)
                 : Math.floor((nextX - 6) / TILE_SIZE);
             const checkY = Math.floor(this.player.y / TILE_SIZE);
-
             if (this.isCollision(checkX, checkY)) {
                 velocityX = 0;
+                // 衝突したらタップ移動をキャンセル
+                this.targetPosition = null;
             }
         }
 
-        // Y方向の衝突チェック
         if (velocityY !== 0) {
             const checkX = Math.floor(this.player.x / TILE_SIZE);
             const checkY = velocityY > 0
                 ? Math.floor((nextY + 6) / TILE_SIZE)
                 : Math.floor((nextY - 6) / TILE_SIZE);
-
             if (this.isCollision(checkX, checkY)) {
                 velocityY = 0;
+                this.targetPosition = null;
             }
         }
 
+        const body = this.player.body as Phaser.Physics.Arcade.Body;
         body.setVelocity(velocityX, velocityY);
 
         const wasMoving = this.isMoving;
         this.isMoving = velocityX !== 0 || velocityY !== 0;
 
-        // アニメーション制御
         this.updatePlayerAnimation(newDirection, wasMoving);
     }
 
-    /**
-     * プレイヤーアニメーションを更新
-     */
     private updatePlayerAnimation(newDirection: string, wasMoving: boolean): void {
         const directionChanged = newDirection !== this.currentDirection;
 
         if (this.isMoving) {
-            // 歩行中
             if (directionChanged || !wasMoving) {
                 this.currentDirection = newDirection;
                 this.player.play(`player-walk-${newDirection}`, true);
             }
         } else {
-            // 停止
             if (wasMoving) {
                 this.player.play(`player-idle-${this.currentDirection}`, true);
             }
         }
     }
 
-    /**
-     * 衝突判定
-     */
     private isCollision(gridX: number, gridY: number): boolean {
         if (gridX < 0 || gridX >= this.mapData.width ||
             gridY < 0 || gridY >= this.mapData.height) {
@@ -501,9 +469,6 @@ export class MapScene extends Phaser.Scene {
         return this.collisionMap[gridY]?.[gridX] ?? true;
     }
 
-    /**
-     * エンカウント判定
-     */
     private checkEncounter(): void {
         if (!this.isMoving) return;
 
@@ -517,7 +482,6 @@ export class MapScene extends Phaser.Scene {
             this.stepsSinceLastEncounter++;
 
             if (this.stepsSinceLastEncounter >= MIN_STEPS_BEFORE_ENCOUNTER) {
-                // 草地（タイルID 2）の上にいる場合のみエンカウント
                 const groundLayer = this.mapData.layers.find(l => l.name === 'ground');
                 if (groundLayer) {
                     const index = currentGridY * this.mapData.width + currentGridX;
@@ -533,12 +497,11 @@ export class MapScene extends Phaser.Scene {
         }
     }
 
-    /**
-     * バトル開始
-     */
     private startBattle(): void {
         this.input.keyboard?.removeAllKeys();
         this.stepsSinceLastEncounter = 0;
+        this.targetPosition = null; // タップ移動をキャンセル
+        this.autoSave();
 
         this.cameras.main.flash(300, 255, 255, 255);
 
@@ -555,18 +518,13 @@ export class MapScene extends Phaser.Scene {
         });
     }
 
-    /**
-     * ランダムな敵を取得
-     */
     private getRandomEnemy(): string {
         const enemies = ['slime', 'bat', 'goblin'];
         return enemies[Phaser.Math.Between(0, enemies.length - 1)];
     }
 
-    /**
-     * タイトルに戻る
-     */
     private returnToTitle(): void {
+        this.autoSave();
         this.cameras.main.fadeOut(500, 0, 0, 0);
 
         this.cameras.main.once('camerafadeoutcomplete', () => {
@@ -574,9 +532,17 @@ export class MapScene extends Phaser.Scene {
         });
     }
 
-    /**
-     * デバッグ情報を更新
-     */
+    private autoSave(): void {
+        const gameState = GameStateManager.getInstance();
+        gameState.setPosition(this.player.x, this.player.y);
+        gameState.setMap('map-field01');
+
+        const saved = SaveManager.getInstance().save(SAVE_SLOTS.AUTO);
+        if (saved) {
+            console.log('Auto-saved at position:', this.player.x, this.player.y);
+        }
+    }
+
     private updateDebugInfo(): void {
         const gridX = Math.floor(this.player.x / TILE_SIZE);
         const gridY = Math.floor(this.player.y / TILE_SIZE);
@@ -593,7 +559,7 @@ export class MapScene extends Phaser.Scene {
             `Steps:${this.stepCount}`,
             `Pos:(${gridX},${gridY})`,
             tileInfo,
-            `[ESC]Title [B]Battle`
+            this.targetPosition ? 'Moving' : 'Idle'
         ].join('\n'));
     }
 }

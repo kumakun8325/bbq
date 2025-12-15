@@ -7,6 +7,7 @@ import Phaser from 'phaser';
 import { BootScene } from '@scenes/BootScene';
 import { PreloadScene } from '@scenes/PreloadScene';
 import { TitleScene } from '@scenes/TitleScene';
+import { SaveLoadScene } from '@scenes/SaveLoadScene';
 import { MapScene } from '@scenes/MapScene';
 import { BattleScene } from '@scenes/BattleScene';
 
@@ -49,6 +50,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
         BootScene,
         PreloadScene,
         TitleScene,
+        SaveLoadScene,
         MapScene,
         BattleScene
     ],
