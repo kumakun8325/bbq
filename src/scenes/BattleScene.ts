@@ -89,6 +89,7 @@ export class BattleScene extends Phaser.Scene {
   private tempCommandStack: { state: BattleState, commandPage: string, selected: number }[] = []; // 戻る用スタック
   private selectedItemIndex: number = 0;
   private availableItems: string[] = ['potion', 'high_potion', 'ether']; // MVP用固定アイテムリスト
+  private itemInventory: Record<string, number> = { potion: 3, high_potion: 2, ether: 2 }; // アイテム在庫
   private itemWindowGraphics!: Phaser.GameObjects.Graphics;
   private itemTexts: Phaser.GameObjects.Text[] = [];
   private commandWindowGraphics!: Phaser.GameObjects.Graphics; // 追加
@@ -97,6 +98,7 @@ export class BattleScene extends Phaser.Scene {
   private selectedTargetIndex: number = 0; // 0=敵, 0-3=味方
   private targetScope: TargetScope = 'single_enemy'; // 現在選択中のアクションのスコープ
   private currentAction: { type: 'attack' | 'skill' | 'item', id?: string } = { type: 'attack' }; // 実行予定のアクション
+  private cancelZone: Phaser.GameObjects.Zone | null = null; // タッチキャンセル用ゾーン
 
   // HPバー（後方互換性のため残す）
   private playerHpBar!: Phaser.GameObjects.Graphics;
@@ -240,7 +242,20 @@ export class BattleScene extends Phaser.Scene {
     });
 
     // タッチ操作対応：敵をタップでターゲット選択・決定
-    this.enemySprite.setInteractive({ useHandCursor: true });
+    // ヒット領域を拡大（スプライトサイズの2倍程度）
+    const hitPadding = 40; // タッチ領域の余白
+    const spriteWidth = this.enemySprite.width * this.enemySprite.scaleX;
+    const spriteHeight = this.enemySprite.height * this.enemySprite.scaleY;
+    this.enemySprite.setInteractive({
+      useHandCursor: true,
+      hitArea: new Phaser.Geom.Rectangle(
+        -hitPadding / 2,
+        -hitPadding / 2,
+        spriteWidth / this.enemySprite.scaleX + hitPadding,
+        spriteHeight / this.enemySprite.scaleY + hitPadding
+      ),
+      hitAreaCallback: Phaser.Geom.Rectangle.Contains
+    });
     this.enemySprite.on('pointerdown', () => {
       // ターゲット選択中であれば決定
       if (this.battleState === 'selectTarget' && this.targetScope === 'single_enemy') {
@@ -406,6 +421,31 @@ export class BattleScene extends Phaser.Scene {
         yoyo: true,
         repeat: -1,
         ease: "Sine.easeInOut",
+      });
+
+      // タッチ操作対応：味方をタップでターゲット選択・決定
+      const partyHitPadding = 30;
+      const partySpriteWidth = sprite.width * sprite.scaleX;
+      const partySpriteHeight = sprite.height * sprite.scaleY;
+      sprite.setInteractive({
+        useHandCursor: true,
+        hitArea: new Phaser.Geom.Rectangle(
+          -partyHitPadding / 2,
+          -partyHitPadding / 2,
+          partySpriteWidth / sprite.scaleX + partyHitPadding,
+          partySpriteHeight / sprite.scaleY + partyHitPadding
+        ),
+        hitAreaCallback: Phaser.Geom.Rectangle.Contains
+      });
+      const memberIndex = i;
+      sprite.on('pointerdown', () => {
+        // ターゲット選択中かつ味方対象であれば選択
+        if (this.battleState === 'selectTarget' &&
+          (this.targetScope === 'single_ally' || this.targetScope === 'all_allies')) {
+          this.selectedTargetIndex = memberIndex;
+          this.updateTargetCursor();
+          this.decideTarget();
+        }
       });
 
       this.partySprites.push(sprite);
@@ -660,7 +700,14 @@ export class BattleScene extends Phaser.Scene {
       text.setDepth(200);
 
       // タッチ操作対応: テキストをインタラクティブに
-      text.setInteractive({ useHandCursor: true });
+      // ヒット領域を拡大（縦横にパディングを追加）
+      const textWidth = Math.max(text.width, 120); // 最小幅120px
+      const textHeight = 36; // コマンド行の高さ
+      text.setInteractive({
+        useHandCursor: true,
+        hitArea: new Phaser.Geom.Rectangle(-10, -5, textWidth + 50, textHeight),
+        hitAreaCallback: Phaser.Geom.Rectangle.Contains
+      });
       text.on('pointerover', () => {
         this.selectedCommand = index;
         this.updateCursorPosition();
@@ -673,6 +720,63 @@ export class BattleScene extends Phaser.Scene {
 
       this.commandTexts.push(text);
     });
+
+    // ページ切り替えボタン（◀ / ▶）をウィンドウ下部に追加
+    const buttonY = cmdY + commandsToShow.length * 40 + 5;
+    const buttonStyle = {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: "20px",
+      color: "#888888",
+      shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
+    };
+
+    // 左ボタン（◀）- にげるページへ
+    if (this.commandPage !== "escape") {
+      const leftBtn = this.add.text(cmdX + 15, buttonY, "◀", {
+        ...buttonStyle,
+        color: "#ffffff"
+      });
+      leftBtn.setDepth(200);
+      leftBtn.setInteractive({
+        useHandCursor: true,
+        hitArea: new Phaser.Geom.Rectangle(-10, -10, 40, 40),
+        hitAreaCallback: Phaser.Geom.Rectangle.Contains
+      });
+      leftBtn.on('pointerdown', () => {
+        this.switchCommandPage("left");
+      });
+      this.commandTexts.push(leftBtn);
+    }
+
+    // 右ボタン（▶）- ぼうぎょページへ
+    if (this.commandPage !== "defend") {
+      const rightBtn = this.add.text(cmdX + cmdWidth - 30, buttonY, "▶", {
+        ...buttonStyle,
+        color: "#ffffff"
+      });
+      rightBtn.setDepth(200);
+      rightBtn.setInteractive({
+        useHandCursor: true,
+        hitArea: new Phaser.Geom.Rectangle(-10, -10, 40, 40),
+        hitAreaCallback: Phaser.Geom.Rectangle.Contains
+      });
+      rightBtn.on('pointerdown', () => {
+        this.switchCommandPage("right");
+      });
+      this.commandTexts.push(rightBtn);
+    }
+
+    // 現在のページ表示（中央に小さく）
+    const pageLabel = this.commandPage === "main" ? "1/3" :
+      this.commandPage === "escape" ? "2/3" : "3/3";
+    const pageText = this.add.text(cmdX + cmdWidth / 2, buttonY + 5, pageLabel, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: "10px",
+      color: "#666666"
+    });
+    pageText.setOrigin(0.5, 0.5);
+    pageText.setDepth(200);
+    this.commandTexts.push(pageText);
   }
 
   /**
@@ -914,6 +1018,9 @@ export class BattleScene extends Phaser.Scene {
     this.itemTexts.forEach(t => t.destroy());
     this.itemTexts = [];
 
+    // キャンセルゾーンを削除
+    this.destroyCancelZone();
+
     // コマンド選択に戻る
     this.battleState = 'playerTurn';
     this.setCommandVisible(true);
@@ -935,6 +1042,8 @@ export class BattleScene extends Phaser.Scene {
   private decideTarget(): void {
     // 指カーソル非表示
     this.hideTargetCursor();
+    // キャンセルゾーンを削除
+    this.destroyCancelZone();
     // アクション実行へ
     this.executeAction();
   }
@@ -944,11 +1053,16 @@ export class BattleScene extends Phaser.Scene {
     this.hideTargetCursor();
     this.cursor.setVisible(false);
 
+    // キャンセルゾーンを削除
+    this.destroyCancelZone();
+
     if (this.currentAction.type === 'item') {
       // アイテム選択に戻る
       this.battleState = 'selectItem';
       this.itemWindowGraphics.setVisible(true);
       this.itemTexts.forEach(t => t.setVisible(true));
+      // アイテム選択用のキャンセルゾーンを再作成
+      this.createCancelZone();
     } else {
       // コマンド選択に戻る (Attack, Skill)
       this.battleState = 'playerTurn';
@@ -1090,6 +1204,9 @@ export class BattleScene extends Phaser.Scene {
     const x = (GAME_WIDTH - windowWidth) / 2;
     const y = (GAME_HEIGHT - windowHeight) / 2;
 
+    // キャンセル用タッチゾーンを作成（アイテム選択時もキャンセル可能）
+    this.createCancelZone();
+
     this.itemWindowGraphics = this.drawWindow(x, y, windowWidth, windowHeight);
     this.itemWindowGraphics.setDepth(300);
 
@@ -1114,18 +1231,41 @@ export class BattleScene extends Phaser.Scene {
     this.availableItems.forEach((itemId, index) => {
       const item = ITEMS[itemId];
       const y = startY + index * rowHeight;
+      const quantity = this.itemInventory[itemId] || 0;
 
       const isSelected = index === this.selectedItemIndex;
-      const color = isSelected ? '#fbbf24' : '#ffffff';
+      const hasStock = quantity > 0;
+      // 在庫なしはグレー、選択中は黄色、通常は白
+      const color = !hasStock ? '#666666' : (isSelected ? '#fbbf24' : '#ffffff');
       const prefix = isSelected ? '▶ ' : '   ';
 
       // アイテム名と個数
-      const text = this.add.text(startX, y, `${prefix}${item.name}：1`, {
+      const text = this.add.text(startX, y, `${prefix}${item.name}：${quantity}`, {
         fontFamily: '"Press Start 2P", monospace',
         fontSize: "16px",
         color: color
       });
       text.setDepth(301);
+
+      // タッチ操作対応（在庫がある場合のみ）
+      if (hasStock) {
+        const textWidth = Math.max(text.width, 180);
+        const textHeight = rowHeight;
+        text.setInteractive({
+          useHandCursor: true,
+          hitArea: new Phaser.Geom.Rectangle(-10, -5, textWidth + 30, textHeight),
+          hitAreaCallback: Phaser.Geom.Rectangle.Contains
+        });
+        text.on('pointerover', () => {
+          this.selectedItemIndex = index;
+          this.updateItemWindow();
+        });
+        text.on('pointerdown', () => {
+          this.selectedItemIndex = index;
+          this.selectItem();
+        });
+      }
+
       this.itemTexts.push(text);
     });
   }
@@ -1135,6 +1275,9 @@ export class BattleScene extends Phaser.Scene {
    */
   private enterTargetSelection(): void {
     this.battleState = "selectTarget";
+
+    // キャンセル用タッチゾーンを作成（ターゲット以外をタップでキャンセル）
+    this.createCancelZone();
 
     // 初期ターゲット設定
     if (this.targetScope === 'single_enemy') {
@@ -1148,6 +1291,37 @@ export class BattleScene extends Phaser.Scene {
     } else if (this.targetScope === 'all_allies' || this.targetScope === 'all_enemies') {
       // 全体対象
       this.updateTargetCursor();
+    }
+  }
+
+  /**
+   * キャンセル用タッチゾーンを作成（画面全体をカバー、背面に配置）
+   */
+  private createCancelZone(): void {
+    // 既存のキャンセルゾーンを削除
+    this.destroyCancelZone();
+
+    // 画面全体をカバーするゾーン（depth低め）
+    this.cancelZone = this.add.zone(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
+    this.cancelZone.setInteractive({ useHandCursor: false });
+    this.cancelZone.setDepth(50); // スプライトより低い
+
+    this.cancelZone.on('pointerdown', () => {
+      if (this.battleState === 'selectTarget') {
+        this.cancelTargetSelection();
+      } else if (this.battleState === 'selectItem') {
+        this.cancelItemSelection();
+      }
+    });
+  }
+
+  /**
+   * キャンセルゾーンを削除
+   */
+  private destroyCancelZone(): void {
+    if (this.cancelZone) {
+      this.cancelZone.destroy();
+      this.cancelZone = null;
     }
   }
 
@@ -1812,6 +1986,17 @@ export class BattleScene extends Phaser.Scene {
 
     // 入力待ちフラグ
     this.resultWaitingForInput = true;
+
+    // タッチ操作対応：画面のどこかをタップで進む
+    const touchZone = this.add.zone(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
+    touchZone.setInteractive({ useHandCursor: true });
+    touchZone.setDepth(499); // ウィンドウの下だがタッチは受け取る
+    touchZone.once('pointerdown', () => {
+      if (this.resultWaitingForInput) {
+        this.closeResultScreen();
+      }
+      touchZone.destroy();
+    });
   }
 
   /**
@@ -2097,6 +2282,20 @@ export class BattleScene extends Phaser.Scene {
 
     if (!item) return;
 
+    // アイテムウィンドウを非表示にする
+    if (this.itemWindowGraphics) {
+      this.itemWindowGraphics.setVisible(false);
+    }
+    this.itemTexts.forEach(t => t.setVisible(false));
+
+    // コマンドウィンドウも非表示にする
+    this.setCommandVisible(false);
+
+    // アイテム在庫を減らす
+    if (this.itemInventory[itemId] !== undefined) {
+      this.itemInventory[itemId] = Math.max(0, this.itemInventory[itemId] - 1);
+    }
+
     // ATBを0にリセット
     activeMember.atb = 0;
     this.updateAtbBarForMember(idx);
@@ -2126,8 +2325,21 @@ export class BattleScene extends Phaser.Scene {
           targetMember.hp = Math.min(targetMember.maxHp, targetMember.hp + healAmount);
           const healed = targetMember.hp - oldHp;
 
-          // 回復演出
-          this.showDamagePopup(targetSprite.x, targetSprite.y - 40, healed, false);
+          // HP回復演出（HP+XX形式、フェードアウト）
+          const hpPopup = this.add.text(targetSprite.x, targetSprite.y - 60, `HP+${healed}`, {
+            fontFamily: '"Press Start 2P"', fontSize: "16px", color: "#4ade80", stroke: "#000", strokeThickness: 4
+          }).setOrigin(0.5).setDepth(200);
+
+          // フェードアウトして消す
+          this.tweens.add({
+            targets: hpPopup,
+            y: hpPopup.y - 30,
+            alpha: 0,
+            duration: 1200,
+            ease: 'Power2',
+            onComplete: () => hpPopup.destroy()
+          });
+
           targetSprite.setTint(0x4ade80); // 緑
           this.time.delayedCall(300, () => targetSprite.clearTint());
 
@@ -2137,10 +2349,20 @@ export class BattleScene extends Phaser.Scene {
           const healAmount = item.effectValue || 0;
           targetMember.mp = Math.min(targetMember.maxMp, targetMember.mp + healAmount);
 
-          // MP回復演出
-          this.add.text(targetSprite.x, targetSprite.y - 60, `MP+${healAmount}`, {
+          // MP回復演出（MP+XX形式、フェードアウト）
+          const mpPopup = this.add.text(targetSprite.x, targetSprite.y - 60, `MP+${healAmount}`, {
             fontFamily: '"Press Start 2P"', fontSize: "16px", color: "#60a5fa", stroke: "#000", strokeThickness: 4
           }).setOrigin(0.5).setDepth(200);
+
+          // フェードアウトして消す
+          this.tweens.add({
+            targets: mpPopup,
+            y: mpPopup.y - 30,
+            alpha: 0,
+            duration: 1200,
+            ease: 'Power2',
+            onComplete: () => mpPopup.destroy()
+          });
 
           targetSprite.setTint(0x60a5fa); // 青
           this.time.delayedCall(300, () => targetSprite.clearTint());
