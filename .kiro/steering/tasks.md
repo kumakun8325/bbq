@@ -1,7 +1,7 @@
 # 📝 タスク管理
 
 > **Project**: BBQ (Bird Battle Quest)  
-> **Last Updated**: 2025-12-15
+> **Last Updated**: 2025-12-16
 
 ---
 
