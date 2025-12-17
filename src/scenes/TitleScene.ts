@@ -45,11 +45,13 @@ export class TitleScene extends Phaser.Scene {
     private createBackground(): void {
         const bg = this.add.graphics();
         const colors = [0x1a1a2e, 0x16213e, 0x0f3460];
-        const segmentHeight = GAME_HEIGHT / colors.length;
+        const w = this.scale.width;
+        const h = this.scale.height;
+        const segmentHeight = h / colors.length;
 
         colors.forEach((color, index) => {
             bg.fillStyle(color, 1);
-            bg.fillRect(0, index * segmentHeight, GAME_WIDTH, segmentHeight + 1);
+            bg.fillRect(0, index * segmentHeight, w, segmentHeight + 1);
         });
 
         this.createStars();
@@ -61,9 +63,11 @@ export class TitleScene extends Phaser.Scene {
     private createStars(): void {
         const graphics = this.add.graphics();
 
+        const w = this.scale.width;
+        const h = this.scale.height;
         for (let i = 0; i < 50; i++) {
-            const x = Phaser.Math.Between(0, GAME_WIDTH);
-            const y = Phaser.Math.Between(0, GAME_HEIGHT);
+            const x = Phaser.Math.Between(0, w);
+            const y = Phaser.Math.Between(0, h);
             const alpha = Phaser.Math.FloatBetween(0.3, 1);
             const size = Phaser.Math.Between(1, 2);
 
@@ -85,7 +89,7 @@ export class TitleScene extends Phaser.Scene {
      * タイトルテキストを作成
      */
     private createTitleText(): void {
-        const centerX = GAME_WIDTH / 2;
+        const centerX = this.scale.width / 2;
 
         this.titleText = this.add.text(centerX, 80, 'BBQ', {
             fontFamily: '"Press Start 2P", monospace',
@@ -110,8 +114,8 @@ export class TitleScene extends Phaser.Scene {
      * メニューを作成
      */
     private createMenu(): void {
-        const centerX = GAME_WIDTH / 2;
-        const menuStartY = GAME_HEIGHT - 120; // 少し上に上げる
+        const centerX = this.scale.width / 2;
+        const menuStartY = this.scale.height - 120; // 少し上に上げる
         const menuSpacing = 60; // 間隔を広げる
 
         this.menuItems = [];
@@ -174,8 +178,8 @@ export class TitleScene extends Phaser.Scene {
      */
     private createVersionInfo(): void {
         this.versionText = this.add.text(
-            GAME_WIDTH - 10,
-            GAME_HEIGHT - 10,
+            this.scale.width - 10,
+            this.scale.height - 10,
             'v0.1.0 MVP',
             {
                 fontFamily: 'monospace',

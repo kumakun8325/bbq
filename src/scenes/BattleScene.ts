@@ -263,15 +263,15 @@ export class BattleScene extends Phaser.Scene {
    * 敵スプライトを作成（FF6風：左側に配置）
    */
   private createEnemySprite(): void {
-    // FF6風：敵は画面左側に配置
-    const enemyX = GAME_WIDTH * 0.25;
-    const enemyY = GAME_HEIGHT * 0.4;
+    // FF6風：敵は画面左側に配置（レスポンシブ対応）
+    const enemyX = this.gameWidth * 0.25;
+    const enemyY = this.gameHeight * 0.35;
 
     // スプライトを作成
     this.enemySprite = this.add.sprite(enemyX, enemyY, this.enemy.spriteKey);
 
-    // スプライトのスケール（解像度2倍対応：4倍）
-    this.enemySprite.setScale(4);
+    // スプライトのスケール（FF6風：小さめ）
+    this.enemySprite.setScale(2);
 
     // アイドルアニメーションを再生
     const animKey = `${this.enemy.spriteKey}-idle`;
@@ -439,12 +439,12 @@ export class BattleScene extends Phaser.Scene {
     this.partySprites.forEach((sprite) => sprite.destroy());
     this.partySprites = [];
 
-    // パーティメンバーの配置（最大4人）（解像度2倍対応）
-    // FF6風：1人目が左上で奥、4人目が右下で手前（右下方向への斜め配置）
-    const baseX = GAME_WIDTH * 0.62; // 開始位置（左寄り）
-    const baseY = GAME_HEIGHT * 0.12; // 開始y位置（上寄り）
-    const offsetX = 28; // 各キャラの横オフセット（右へ）（解像度2倍）
-    const offsetY = 64; // 各キャラの縦オフセット（下へ）（解像度2倍）
+    // パーティメンバーの配置（最大4人）
+    // FF6風：右端寄りにV字型配置
+    const baseX = this.gameWidth * 0.75; // 開始位置（右寄り）
+    const baseY = this.gameHeight * 0.20; // 開始y位置
+    const offsetX = 20; // 各キャラの横オフセット（右へ）
+    const offsetY = 50; // 各キャラの縦オフセット（下へ）
 
     for (let i = 0; i < this.partyCount; i++) {
       const x = baseX + offsetX * i;
@@ -453,7 +453,7 @@ export class BattleScene extends Phaser.Scene {
       // クラスプロパティのpartyMembersから取得
       const member = this.partyMembers[i];
       const sprite = this.add.sprite(x, y, member.spriteKey);
-      sprite.setScale(4); // 解像度2倍対応：4倍
+      sprite.setScale(2); // FF6風：小さめ
 
       // 深度を設定（1人目=index0が奥=depth低、4人目=index3が手前=depth高）
       // 下にいるキャラほど手前に表示
@@ -529,15 +529,15 @@ export class BattleScene extends Phaser.Scene {
     this.readyArrows = [];
     if (this.targetFingerCursor) this.targetFingerCursor.destroy();
 
-    // UI描画開始
-    const uiY = this.gameHeight - 150; // UI開始Y位置（下部）
-    const windowHeight = 140;
-    const margin = 10;
+    // UI描画開始（FF6風：コンパクトなUI）
+    const uiY = this.gameHeight - 115; // UI開始Y位置（下部）
+    const windowHeight = 110;
+    const margin = 8;
     const gap = 4;
 
-    // ウィンドウ幅の計算 (左35%, 右65%くらい)
+    // ウィンドウ幅の計算 (左30%, 右70%)
     const totalWidth = this.gameWidth - margin * 2;
-    const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+    const enemyWindowWidth = Math.floor(totalWidth * 0.28);
     const partyWindowWidth = totalWidth - enemyWindowWidth - gap;
 
     // UI用グラフィックス
@@ -547,46 +547,43 @@ export class BattleScene extends Phaser.Scene {
     this.drawWindow(enemyWindowX, uiY, enemyWindowWidth, windowHeight, this.uiGraphics);
 
     // 敵名表示
-    this.enemyNameText = this.add.text(enemyWindowX + 20, uiY + 24, this.enemy.name, {
+    this.enemyNameText = this.add.text(enemyWindowX + 12, uiY + 15, this.enemy.name, {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: "18px",
+      fontSize: "12px",
       color: "#ffffff",
-      shadow: { offsetX: 2, offsetY: 2, color: "#000", blur: 0, fill: true },
+      shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
     });
 
     // 2. パーティステータスウィンドウ (右)
     const partyWindowX = enemyWindowX + enemyWindowWidth + gap;
     this.drawWindow(partyWindowX, uiY, partyWindowWidth, windowHeight, this.uiGraphics);
 
-    // 各カラムの相対X位置（等間隔に配置するために幅から計算）
+    // 各カラムの相対X位置（ウィンドウ幅に対するパーセンテージで計算）
+    const nameRelX = 10;
+    const hpRelX = partyWindowWidth * 0.20;
+    const mpRelX = partyWindowWidth * 0.42;
+    const atbRelX = partyWindowWidth * 0.62;
+    const atbWidth = partyWindowWidth * 0.16;
 
-    // ベースオフセット
-    const nameRelX = 20;
-    // 幅に応じて可変にする
-    const hpRelX = Math.max(140, partyWindowWidth * 0.25);
-    const mpRelX = Math.max(270, partyWindowWidth * 0.45);
-    const atbRelX = Math.max(350, partyWindowWidth * 0.65);
-    const atbWidth = Math.min(150, Math.max(90, partyWindowWidth * 0.2));
-
-    const rowHeight = 32;
+    const rowHeight = 22; // コンパクトな行高さ
 
     for (let i = 0; i < this.partyCount; i++) {
       const member = this.partyMembers[i];
-      const rowY = uiY + 20 + i * rowHeight;
+      const rowY = uiY + 12 + i * rowHeight;
 
       // 名前
       this.add.text(partyWindowX + nameRelX, rowY, member.name, {
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: "16px",
+        fontSize: "10px",
         color: "#e0e0e0",
-        shadow: { offsetX: 2, offsetY: 2, color: "#000", blur: 0, fill: true },
+        shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
       });
 
       // HP (現在値/最大値)
       const hpStr = `${member.hp}/${member.maxHp}`;
       const hpText = this.add.text(partyWindowX + hpRelX, rowY, hpStr, {
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: "14px",
+        fontSize: "10px",
         color: "#ffffff",
         shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
       });
@@ -596,7 +593,7 @@ export class BattleScene extends Phaser.Scene {
       const mpStr = `${member.mp}/${member.maxMp}`;
       const mpText = this.add.text(partyWindowX + mpRelX, rowY, mpStr, {
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: "14px",
+        fontSize: "10px",
         color: "#60a5fa", // 青系
         shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
       });
@@ -605,12 +602,12 @@ export class BattleScene extends Phaser.Scene {
       // ATBゲージ
       const atbAbsX = partyWindowX + atbRelX;
 
-      // 枠
+      // 枠（小さめ）
       const atbFrame = this.add.graphics();
       atbFrame.fillStyle(0x222222, 1);
-      atbFrame.fillRoundedRect(atbAbsX, rowY, atbWidth, 10, 4);
-      atbFrame.lineStyle(2, 0xaaaaaa, 1);
-      atbFrame.strokeRoundedRect(atbAbsX, rowY, atbWidth, 10, 4);
+      atbFrame.fillRoundedRect(atbAbsX, rowY + 2, atbWidth, 8, 3);
+      atbFrame.lineStyle(1, 0xaaaaaa, 1);
+      atbFrame.strokeRoundedRect(atbAbsX, rowY + 2, atbWidth, 8, 3);
       this.partyAtbBars.push(atbFrame);
 
       // ゲージ本体
@@ -703,14 +700,14 @@ export class BattleScene extends Phaser.Scene {
     }
 
     // コマンドウィンドウ位置：左下の敵名ウィンドウの上に表示
-    const margin = 10;
-    const uiY = this.gameHeight - 150;
+    const margin = 8;
+    const uiY = this.gameHeight - 115;
 
     let cmdX = margin;
     let cmdY = uiY;
 
-    const totalWidth = this.gameWidth - 20;
-    const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+    const totalWidth = this.gameWidth - 16;
+    const enemyWindowWidth = Math.floor(totalWidth * 0.28);
 
     const cmdWidth = enemyWindowWidth;
 
@@ -733,24 +730,24 @@ export class BattleScene extends Phaser.Scene {
       commandsToShow = ["にげる"];
     }
 
-    // 背景描画
+    // 背景描画（コンパクト）
     this.commandWindowGraphics = this.add.graphics();
     this.commandWindowGraphics.fillStyle(0x000044, 0.95);
-    this.commandWindowGraphics.fillRect(cmdX, cmdY, cmdWidth, commandsToShow.length * 40 + 20);
-    this.commandWindowGraphics.lineStyle(4, 0xffffff, 1);
+    this.commandWindowGraphics.fillRect(cmdX, cmdY, cmdWidth, commandsToShow.length * 24 + 16);
+    this.commandWindowGraphics.lineStyle(2, 0xffffff, 1);
     this.commandWindowGraphics.strokeRect(
       cmdX + 2,
       cmdY + 2,
       cmdWidth - 4,
-      commandsToShow.length * 40 + 16,
+      commandsToShow.length * 24 + 12,
     );
     this.commandWindowGraphics.setDepth(190);
 
-    // コマンドテキスト生成
+    // コマンドテキスト生成（小さめフォント）
     commandsToShow.forEach((label, index) => {
-      const text = this.add.text(cmdX + 30, cmdY + 20 + index * 36, label, {
+      const text = this.add.text(cmdX + 20, cmdY + 12 + index * 24, label, {
         fontFamily: '"Press Start 2P", monospace',
-        fontSize: "16px",
+        fontSize: "10px",
         color: "#ffffff",
         shadow: { offsetX: 1, offsetY: 1, color: "#000", blur: 0, fill: true },
       });
@@ -946,26 +943,27 @@ export class BattleScene extends Phaser.Scene {
    * 指定メンバーのATBバーを更新するヘルパー
    */
   private updateAtbBarForMember(memberIndex: number): void {
-    const margin = 10;
-    const uiY = GAME_HEIGHT - 150;
+    const margin = 8;
+    const uiY = this.gameHeight - 115;
     const gap = 4;
-    const totalWidth = GAME_WIDTH - margin * 2;
-    const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+    const totalWidth = this.gameWidth - margin * 2;
+    const enemyWindowWidth = Math.floor(totalWidth * 0.28);
+    const partyWindowWidth = totalWidth - enemyWindowWidth - gap;
     const partyWindowX = margin + enemyWindowWidth + gap;
-    const atbRelX = 350;
-    const atbWidth = 90;
-    const rowHeight = 32;
+    const atbRelX = partyWindowWidth * 0.62;
+    const atbWidth = partyWindowWidth * 0.16;
+    const rowHeight = 22;
 
     const member = this.partyMembers[memberIndex];
-    const rowY = uiY + 20 + memberIndex * rowHeight;
+    const rowY = uiY + 12 + memberIndex * rowHeight;
     const atbAbsX = partyWindowX + atbRelX;
 
     this.drawAtbBar(
       this.partyAtbBars[memberIndex],
       atbAbsX + 2,
-      rowY + 2, // 枠内に収める（枠はrowYから開始）
+      rowY + 4, // 枠内に収める
       atbWidth - 4,
-      6,
+      4,
       member.atb,
       member.maxAtb,
     );
