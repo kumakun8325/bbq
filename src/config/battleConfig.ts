@@ -5,8 +5,8 @@
 
 // 循環参照を避けるため、ゲーム解像度を直接定義
 // gameConfig.ts と同じ値を維持すること
-const GAME_WIDTH = 960;
-const GAME_HEIGHT = 640;
+const GAME_WIDTH = 1600;
+const GAME_HEIGHT = 720;
 
 /** バトルUIレイアウト定数 */
 export const BATTLE_UI = {

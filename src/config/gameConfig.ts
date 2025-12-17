@@ -11,9 +11,9 @@ import { SaveLoadScene } from '@scenes/SaveLoadScene';
 import { MapScene } from '@scenes/MapScene';
 import { BattleScene } from '@scenes/BattleScene';
 
-/** ゲームの基本解像度（テキストをくっきり表示するため高解像度） */
-export const GAME_WIDTH = 960;
-export const GAME_HEIGHT = 640;
+/** ゲームの基本解像度（スマホ横持ち20:9に最適化） */
+export const GAME_WIDTH = 1600;
+export const GAME_HEIGHT = 720;
 
 /** タイルサイズ */
 export const TILE_SIZE = 16;
@@ -22,22 +22,17 @@ export const TILE_SIZE = 16;
 export const gameConfig: Phaser.Types.Core.GameConfig = {
     type: Phaser.AUTO,
     parent: 'game-container',
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#1a1a2e',
     pixelArt: true,
     roundPixels: true,
     scale: {
-        mode: Phaser.Scale.FIT,
+        mode: Phaser.Scale.RESIZE,
+        parent: 'game-container',
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        min: {
-            width: GAME_WIDTH / 2,
-            height: GAME_HEIGHT / 2
-        },
-        max: {
-            width: GAME_WIDTH * 3,
-            height: GAME_HEIGHT * 3
-        }
+        width: '100%',
+        height: '100%'
     },
     physics: {
         default: 'arcade',

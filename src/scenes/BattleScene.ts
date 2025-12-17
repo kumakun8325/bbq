@@ -62,6 +62,10 @@ export class BattleScene extends Phaser.Scene {
   private enemyHpText!: Phaser.GameObjects.Text;
   private cursor!: Phaser.GameObjects.Text;
 
+  // 画面サイズ（レスポンシブ対応）
+  private gameWidth: number = 0;
+  private gameHeight: number = 0;
+
   // パーティメンバーのHP表示（4人分）
   private partyHpTexts: Phaser.GameObjects.Text[] = [];
   private partyMpTexts: Phaser.GameObjects.Text[] = []; // MP表示追加
@@ -79,6 +83,8 @@ export class BattleScene extends Phaser.Scene {
   private turnCount: number = 0;
   private turnText!: Phaser.GameObjects.Text;
   private actedPartyMemberIndices: Set<number> = new Set(); // 今のターンに行動済みのメンバーインデックス
+  private enemyNameText!: Phaser.GameObjects.Text; // 敵名表示用(リサイズ対応)
+  private uiGraphics!: Phaser.GameObjects.Graphics; // UI描画用
 
   // ATB満タン時刻記録（満タンになった順に行動させるため）
   // 値が小さいほど先に満タンになった = 先に行動する
@@ -170,6 +176,13 @@ export class BattleScene extends Phaser.Scene {
   create(): void {
     console.log("BattleScene: Creating...");
 
+    // 現在の画面サイズを取得
+    this.gameWidth = this.scale.width;
+    this.gameHeight = this.scale.height;
+
+    // リサイズイベントのハンドリング
+    this.scale.on('resize', this.onResize, this);
+
     this.createBackground();
     this.createEnemySprite();
     this.createEnemyStatusUI(); // 新規追加
@@ -191,23 +204,59 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
+   * 画面リサイズ時の処理
+   */
+  private onResize(gameSize: Phaser.Structs.Size): void {
+    this.gameWidth = gameSize.width;
+    this.gameHeight = gameSize.height;
+
+    this.cameras.main.setViewport(0, 0, this.gameWidth, this.gameHeight);
+
+    // 背景再描画
+    this.createBackground();
+    // UI再配置（簡易実装：一度消して再作成は重いので、位置だけ更新するのが理想だが、今回は再作成する部分としない部分を見極める）
+    // とりあえず位置更新が必要なものだけ更新
+    this.refreshUI();
+  }
+
+  private refreshUI(): void {
+    // UIの再構成
+    this.createUI();
+
+    // コマンド選択中ならコマンドウィンドウの位置調整と再表示
+    if (this.battleState === 'selectCommand') {
+      this.updateCommandWindow();
+    }
+
+    // カーソル位置の更新
+    this.updateCursorPosition();
+  }
+
+  private bgGraphics!: Phaser.GameObjects.Graphics;
+
+  /**
    * 背景を作成
    */
   private createBackground(): void {
-    // バトル背景（グラデーション）
-    const bg = this.add.graphics();
+    // 既存の背景があればクリア
+    if (this.bgGraphics) {
+      this.bgGraphics.clear();
+    } else {
+      this.bgGraphics = this.add.graphics();
+      this.bgGraphics.setDepth(-100); // 念のため一番奥に
+    }
 
     // 空
-    bg.fillStyle(0x1e3a5f, 1);
-    bg.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT * 0.6);
+    this.bgGraphics.fillStyle(0x1e3a5f, 1);
+    this.bgGraphics.fillRect(0, 0, this.gameWidth, this.gameHeight * 0.6);
 
     // 地面
-    bg.fillStyle(0x2d4a3e, 1);
-    bg.fillRect(0, GAME_HEIGHT * 0.6, GAME_WIDTH, GAME_HEIGHT * 0.4);
+    this.bgGraphics.fillStyle(0x2d4a3e, 1);
+    this.bgGraphics.fillRect(0, this.gameHeight * 0.6, this.gameWidth, this.gameHeight * 0.4);
 
     // 地面のライン
-    bg.lineStyle(2, 0x3d5a4e, 1);
-    bg.lineBetween(0, GAME_HEIGHT * 0.6, GAME_WIDTH, GAME_HEIGHT * 0.6);
+    this.bgGraphics.lineStyle(2, 0x3d5a4e, 1);
+    this.bgGraphics.lineBetween(0, this.gameHeight * 0.6, this.gameWidth, this.gameHeight * 0.6);
   }
 
   /**
@@ -464,22 +513,41 @@ export class BattleScene extends Phaser.Scene {
    * - コマンド: キャラクターの上にポップアップ表示
    */
   private createUI(): void {
-    const uiY = GAME_HEIGHT - 150; // UI開始Y位置（下部）
-    const windowHeight = 140; // ウィンドウ高さ
+    // 既存UIのクリーンアップ
+    if (this.uiGraphics) this.uiGraphics.destroy();
+    if (this.turnText) this.turnText.destroy();
+    if (this.cursor) this.cursor.destroy();
+    if (this.enemyNameText) this.enemyNameText.destroy();
+
+    this.partyHpTexts.forEach(t => t.destroy());
+    this.partyHpTexts = [];
+    this.partyMpTexts.forEach(t => t.destroy());
+    this.partyMpTexts = [];
+    this.partyAtbBars.forEach(g => g.destroy());
+    this.partyAtbBars = [];
+    this.readyArrows.forEach(s => s.destroy());
+    this.readyArrows = [];
+    if (this.targetFingerCursor) this.targetFingerCursor.destroy();
+
+    // UI描画開始
+    const uiY = this.gameHeight - 150; // UI開始Y位置（下部）
+    const windowHeight = 140;
     const margin = 10;
-    const gap = 4; // ウィンドウ間の隙間
+    const gap = 4;
 
     // ウィンドウ幅の計算 (左35%, 右65%くらい)
-    const totalWidth = GAME_WIDTH - margin * 2;
+    const totalWidth = this.gameWidth - margin * 2;
     const enemyWindowWidth = Math.floor(totalWidth * 0.35);
     const partyWindowWidth = totalWidth - enemyWindowWidth - gap;
 
+    // UI用グラフィックス
+    this.uiGraphics = this.add.graphics();
     // 1. 敵名ウィンドウ (左)
     const enemyWindowX = margin;
-    this.drawWindow(enemyWindowX, uiY, enemyWindowWidth, windowHeight);
+    this.drawWindow(enemyWindowX, uiY, enemyWindowWidth, windowHeight, this.uiGraphics);
 
     // 敵名表示
-    this.add.text(enemyWindowX + 20, uiY + 24, this.enemy.name, {
+    this.enemyNameText = this.add.text(enemyWindowX + 20, uiY + 24, this.enemy.name, {
       fontFamily: '"Press Start 2P", monospace',
       fontSize: "18px",
       color: "#ffffff",
@@ -488,19 +556,19 @@ export class BattleScene extends Phaser.Scene {
 
     // 2. パーティステータスウィンドウ (右)
     const partyWindowX = enemyWindowX + enemyWindowWidth + gap;
-    this.drawWindow(partyWindowX, uiY, partyWindowWidth, windowHeight);
+    this.drawWindow(partyWindowX, uiY, partyWindowWidth, windowHeight, this.uiGraphics);
 
-    // パーティステータス表示
-    this.partyHpTexts = [];
-    this.partyAtbBars = [];
+    // 各カラムの相対X位置（等間隔に配置するために幅から計算）
+
+    // ベースオフセット
+    const nameRelX = 20;
+    // 幅に応じて可変にする
+    const hpRelX = Math.max(140, partyWindowWidth * 0.25);
+    const mpRelX = Math.max(270, partyWindowWidth * 0.45);
+    const atbRelX = Math.max(350, partyWindowWidth * 0.65);
+    const atbWidth = Math.min(150, Math.max(90, partyWindowWidth * 0.2));
 
     const rowHeight = 32;
-    // 各カラムの相対X位置 (レイアウト調整: Name | HP | MP | ATB)
-    const nameRelX = 15;
-    const hpRelX = 140;
-    const mpRelX = 270; // MP表示位置（ATBと被らないように左へ）
-    const atbRelX = 350; // 少し右へ
-    const atbWidth = 90; // 少し短く
 
     for (let i = 0; i < this.partyCount; i++) {
       const member = this.partyMembers[i];
@@ -537,18 +605,16 @@ export class BattleScene extends Phaser.Scene {
       // ATBゲージ
       const atbAbsX = partyWindowX + atbRelX;
 
-      // 枠 (SFC風: 濃いグレーの背景に明るい枠)
+      // 枠
       const atbFrame = this.add.graphics();
-      // 背景色（暗い色）
       atbFrame.fillStyle(0x222222, 1);
       atbFrame.fillRoundedRect(atbAbsX, rowY, atbWidth, 10, 4);
-      // 枠線（明るいグレー）
       atbFrame.lineStyle(2, 0xaaaaaa, 1);
       atbFrame.strokeRoundedRect(atbAbsX, rowY, atbWidth, 10, 4);
+      this.partyAtbBars.push(atbFrame);
 
       // ゲージ本体
       const atbBar = this.add.graphics();
-      // ゲージ位置も枠内に収めるため調整
       this.drawAtbBar(
         atbBar,
         atbAbsX + 2,
@@ -561,10 +627,7 @@ export class BattleScene extends Phaser.Scene {
       this.partyAtbBars.push(atbBar);
     }
 
-    // 互換性のため
     this.playerHpText = this.partyHpTexts[0];
-
-    // createUIでは初期化のみ
 
     // ターン数表示
     this.turnText = this.add.text(16, 16, `TURN: ${this.turnCount}`, {
@@ -574,37 +637,30 @@ export class BattleScene extends Phaser.Scene {
     });
 
     // カーソル
-    this.cursor = this.add.text(
-      0, // 位置はupdateCursorPositionで設定
-      0,
-      "▶",
-      {
-        fontFamily: '"Press Start 2P", monospace',
-        fontSize: "16px",
-        color: "#ffffff",
-      },
-    );
-    this.cursor.setVisible(false); // 初期は非表示
+    this.cursor = this.add.text(0, 0, "▶", {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: "16px",
+      color: "#ffffff",
+    });
+    this.cursor.setVisible(false);
 
-    // ATB満タン時のカーソル（下向き矢印）
+    // ATB満タン矢印
     this.readyArrows = [];
     for (let i = 0; i < this.partyCount; i++) {
       const arrow = this.add.sprite(0, 0, 'arrow-down');
-      arrow.setOrigin(0.5, 0); // 上端中央を基準に（矢印が下を向く）
-      arrow.setScale(2); // 2倍サイズで見やすく
+      arrow.setOrigin(0.5, 0);
+      arrow.setScale(2);
       arrow.setDepth(150);
       arrow.setVisible(false);
       this.readyArrows.push(arrow);
     }
 
-    // ターゲット選択用カーソル（初期テクスチャはhand-cursor、setFlipXやsetOriginは使用時に制御）
+    // ターゲット用指カーソル
     this.targetFingerCursor = this.add.sprite(0, 0, 'hand-cursor');
-    this.targetFingerCursor.setScale(2); // 2倍サイズで見やすく
-    this.targetFingerCursor.setDepth(400);
     this.targetFingerCursor.setVisible(false);
-  }
-
-  /**
+    this.targetFingerCursor.setDepth(200);
+    this.targetFingerCursor.setScale(2);
+  }  /**
    * 標準的な青いウィンドウを描画するヘルパー
    */
   private drawWindow(
@@ -612,8 +668,9 @@ export class BattleScene extends Phaser.Scene {
     y: number,
     width: number,
     height: number,
+    graphics?: Phaser.GameObjects.Graphics
   ): Phaser.GameObjects.Graphics {
-    const g = this.add.graphics();
+    const g = graphics || this.add.graphics();
 
     // 背景
     g.fillStyle(0x000044, 0.9);
@@ -647,12 +704,12 @@ export class BattleScene extends Phaser.Scene {
 
     // コマンドウィンドウ位置：左下の敵名ウィンドウの上に表示
     const margin = 10;
-    const uiY = GAME_HEIGHT - 150;
+    const uiY = this.gameHeight - 150;
 
     let cmdX = margin;
     let cmdY = uiY;
 
-    const totalWidth = GAME_WIDTH - 20;
+    const totalWidth = this.gameWidth - 20;
     const enemyWindowWidth = Math.floor(totalWidth * 0.35);
 
     const cmdWidth = enemyWindowWidth;
