@@ -242,21 +242,16 @@ export class BattleScene extends Phaser.Scene {
     });
 
     // タッチ操作対応：敵をタップでターゲット選択・決定
-    // ヒット領域を拡大（スプライトサイズの2倍程度）
-    const hitPadding = 40; // タッチ領域の余白
-    const spriteWidth = this.enemySprite.width * this.enemySprite.scaleX;
-    const spriteHeight = this.enemySprite.height * this.enemySprite.scaleY;
+    // ヒット領域をスプライト全体に設定（originが0.5なので原点調整）
+    const enemyW = this.enemySprite.width;
+    const enemyH = this.enemySprite.height;
     this.enemySprite.setInteractive({
       useHandCursor: true,
-      hitArea: new Phaser.Geom.Rectangle(
-        -hitPadding / 2,
-        -hitPadding / 2,
-        spriteWidth / this.enemySprite.scaleX + hitPadding,
-        spriteHeight / this.enemySprite.scaleY + hitPadding
-      ),
+      hitArea: new Phaser.Geom.Rectangle(-enemyW / 2, -enemyH / 2, enemyW, enemyH),
       hitAreaCallback: Phaser.Geom.Rectangle.Contains
     });
     this.enemySprite.on('pointerdown', () => {
+      console.log('Enemy tapped, battleState:', this.battleState, 'targetScope:', this.targetScope);
       // ターゲット選択中であれば決定
       if (this.battleState === 'selectTarget' && this.targetScope === 'single_enemy') {
         this.decideTarget();
@@ -271,24 +266,24 @@ export class BattleScene extends Phaser.Scene {
     const x = this.enemySprite.x;
     const y = this.enemySprite.y + 80;
 
-    // シールドテキスト
+    // シールドテキスト（スプライトサイズに合わせて縮小）
     this.enemyShieldText = this.add.text(x, y, "", {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: "16px",
+      fontSize: "10px",
       color: "#60a5fa", // 青色
       stroke: "#000000",
-      strokeThickness: 4,
+      strokeThickness: 2,
       align: "center",
     });
     this.enemyShieldText.setOrigin(0.5);
 
     // 弱点テキスト
-    this.enemyWeaknessText = this.add.text(x, y + 24, "", {
+    this.enemyWeaknessText = this.add.text(x, y + 16, "", {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: "14px",
+      fontSize: "8px",
       color: "#ffffff",
       stroke: "#000000",
-      strokeThickness: 4,
+      strokeThickness: 2,
       align: "center",
     });
     this.enemyWeaknessText.setOrigin(0.5);
@@ -424,21 +419,17 @@ export class BattleScene extends Phaser.Scene {
       });
 
       // タッチ操作対応：味方をタップでターゲット選択・決定
-      const partyHitPadding = 30;
-      const partySpriteWidth = sprite.width * sprite.scaleX;
-      const partySpriteHeight = sprite.height * sprite.scaleY;
+      // ヒット領域をスプライト全体に設定（originが0.5なので原点調整）
+      const partyW = sprite.width;
+      const partyH = sprite.height;
       sprite.setInteractive({
         useHandCursor: true,
-        hitArea: new Phaser.Geom.Rectangle(
-          -partyHitPadding / 2,
-          -partyHitPadding / 2,
-          partySpriteWidth / sprite.scaleX + partyHitPadding,
-          partySpriteHeight / sprite.scaleY + partyHitPadding
-        ),
+        hitArea: new Phaser.Geom.Rectangle(-partyW / 2, -partyH / 2, partyW, partyH),
         hitAreaCallback: Phaser.Geom.Rectangle.Contains
       });
       const memberIndex = i;
       sprite.on('pointerdown', () => {
+        console.log('Party member tapped:', memberIndex, 'battleState:', this.battleState);
         // ターゲット選択中かつ味方対象であれば選択
         if (this.battleState === 'selectTarget' &&
           (this.targetScope === 'single_ally' || this.targetScope === 'all_allies')) {
@@ -492,15 +483,16 @@ export class BattleScene extends Phaser.Scene {
 
     // パーティステータス表示
     this.partyHpTexts = [];
+    this.partyMpTexts = []; // MP表示も初期化
     this.partyAtbBars = [];
 
     const rowHeight = 32;
-    // 各カラムの相対X位置 (レイアウト調整: Name | HP | MP | ATB)
+    // 各カラムの相対X位置 (ウィンドウ幅に対するパーセンテージで計算)
     const nameRelX = 15;
-    const hpRelX = 140;
-    const mpRelX = 270; // MP表示位置（ATBと被らないように左へ）
-    const atbRelX = 350; // 少し右へ
-    const atbWidth = 90; // 少し短く
+    const hpRelX = partyWindowWidth * 0.22;  // ~134px @ 607
+    const mpRelX = partyWindowWidth * 0.42;  // ~255px @ 607
+    const atbRelX = partyWindowWidth * 0.60; // ~364px @ 607
+    const atbWidth = partyWindowWidth * 0.18; // ~109px @ 607
 
     for (let i = 0; i < this.partyCount; i++) {
       const member = this.partyMembers[i];
@@ -2621,9 +2613,10 @@ export class BattleScene extends Phaser.Scene {
     const gap = 4;
     const totalWidth = GAME_WIDTH - margin * 2;
     const enemyWindowWidth = Math.floor(totalWidth * 0.35);
+    const partyWindowWidth = totalWidth - enemyWindowWidth - gap;
     const partyWindowX = margin + enemyWindowWidth + gap;
-    const atbRelX = 350;
-    const atbWidth = 90; // createUIと同じ値に修正
+    const atbRelX = partyWindowWidth * 0.60; // createUIと同じ
+    const atbWidth = partyWindowWidth * 0.18; // createUIと同じ
     const rowHeight = 32;
 
     // === パーティメンバーのATB回復 ===
