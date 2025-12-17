@@ -4,6 +4,34 @@
 
 ---
 
+## 2025-12-18（木）
+
+### 実施内容
+- **BPシステム実装（TASK-025完了）** ※別ブランチ `feature/bp-system` にて完了
+  - `BattleScene.ts`: BPデータ、UI、ブーストロジック実装
+  - `battleConfig.ts`: 定数追加
+- **PWA/スマホ対応の不具合修正（作業中）**
+  - タッチ操作、UIサイズ修正、ATBバー修正を試行（デプロイ確認したが未解決）
+  - デプロイURL: `https://bbq-game-a502a--preview-oll41vag.web.app`
+
+### 変更ファイル
+- `src/scenes/BattleScene.ts` - UI修正、タッチ修正
+- `docs/SPECIFICATION.md` - アートスタイル追記
+
+### 次回TODO
+- [ ] **バグ修正（PWA/Mobile）**:
+  - タッチ操作が反応しない問題の調査・修正
+  - UIサイズ（SHIELD, [?]）が大きすぎる問題の修正
+  - ATBバーが途中で止まる、一部キャラ（index 0, 1）が表示されない問題の修正
+- [ ] **キャラ頭身変更**:
+  - オクトラ風（2.5〜3頭身）へのドット絵変更（参考: https://dotartplay.com/octopathtraveler-dot）
+- [ ] **TASK-026**: マルチヒット攻撃実装
+- [ ] **TASK-020**: 武器合成システム
+
+### ブランチ状態
+- 現在: `feature/pwa-mobile-support` (修正中)
+- 完了: `feature/bp-system` (マージ待ち)
+
 ## 2025-12-16（月）
 
 ### 実施内容
