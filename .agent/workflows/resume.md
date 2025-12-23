@@ -30,15 +30,24 @@ git branch -a
 
 ## 4. フィーチャーブランチ対応表
 
-| ブランチ名 | 機能 |
-|-----------|------|
-| `feature/player-sprite` | 歩行アニメーション付きプレイヤースプライト |
-| `feature/battle-improvements` | バトルUI改善、ダメージポップアップ |
-| `feature/shield-break` | オクトパストラベラー風シールド/ブレイクシステム |
+| ブランチ名 | 機能 | 状態 |
+|-----------|------|------|
+| `feature/pwa-mobile-support` | PWA対応、スマホタッチ操作 | マージ待ち |
+| `feature/save-load-system` | セーブ/ロード機能 | 作業中 |
+| `feature/level-up-system` | レベルアップシステム | マージ済 |
+| `feature/player-sprite` | 歩行アニメーション付きプレイヤースプライト | マージ済 |
+| `feature/battle-improvements` | バトルUI改善、ダメージポップアップ | マージ済 |
+| `feature/shield-break` | オクトパストラベラー風シールド/ブレイクシステム | マージ済 |
 
-## 5. 次のアクション
+## 5. セッションログ確認
+
+前回の作業内容を確認:
+- `.agent/SESSION_LOG.md` - 作業履歴と次回TODO
+
+## 6. 次のアクション
 
 1. 現在の進捗状況を要約
 2. 進行中/未完了のタスクを一覧表示
-3. 次に取り組むべきタスクを提案
-4. ユーザーが選択したブランチに切り替え
+3. SESSION_LOG.mdの「次回TODO」を確認
+4. 次に取り組むべきタスクを提案
+5. ユーザーが選択したブランチに切り替え

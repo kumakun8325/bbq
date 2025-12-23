@@ -7,12 +7,13 @@ import Phaser from 'phaser';
 import { BootScene } from '@scenes/BootScene';
 import { PreloadScene } from '@scenes/PreloadScene';
 import { TitleScene } from '@scenes/TitleScene';
+import { SaveLoadScene } from '@scenes/SaveLoadScene';
 import { MapScene } from '@scenes/MapScene';
 import { BattleScene } from '@scenes/BattleScene';
 
-/** ゲームの基本解像度（テキストをくっきり表示するため高解像度） */
-export const GAME_WIDTH = 960;
-export const GAME_HEIGHT = 640;
+/** ゲームの基本解像度（20:9でPixel 9等の最新スマホに最適化） */
+export const GAME_WIDTH = 1280;
+export const GAME_HEIGHT = 576;
 
 /** タイルサイズ */
 export const TILE_SIZE = 16;
@@ -29,13 +30,14 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
     scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
+        expandParent: true,
         min: {
             width: GAME_WIDTH / 2,
             height: GAME_HEIGHT / 2
         },
         max: {
-            width: GAME_WIDTH * 3,
-            height: GAME_HEIGHT * 3
+            width: GAME_WIDTH * 2,
+            height: GAME_HEIGHT * 2
         }
     },
     physics: {
@@ -49,6 +51,7 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
         BootScene,
         PreloadScene,
         TitleScene,
+        SaveLoadScene,
         MapScene,
         BattleScene
     ],

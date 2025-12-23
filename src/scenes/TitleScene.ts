@@ -4,13 +4,22 @@
 
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT } from '@/config/gameConfig';
+import { SaveManager } from '@/managers/SaveManager';
+import { GameStateManager } from '@/managers/GameStateManager';
+
+type MenuOption = 'continue' | 'newgame';
 
 export class TitleScene extends Phaser.Scene {
     private titleText!: Phaser.GameObjects.Text;
     private subtitleText!: Phaser.GameObjects.Text;
-    private startText!: Phaser.GameObjects.Text;
     private versionText!: Phaser.GameObjects.Text;
     private blinkTimer?: Phaser.Time.TimerEvent;
+
+    // メニュー関連
+    private menuItems: Phaser.GameObjects.Text[] = [];
+    private selectedIndex: number = 0;
+    private hasSaveData: boolean = false;
+    private cursor!: Phaser.GameObjects.Text;
 
     constructor() {
         super({ key: 'TitleScene' });
@@ -19,9 +28,12 @@ export class TitleScene extends Phaser.Scene {
     create(): void {
         console.log('TitleScene: Creating...');
 
+        // セーブデータの存在確認
+        this.hasSaveData = SaveManager.getInstance().hasSaveData();
+
         this.createBackground();
         this.createTitleText();
-        this.createStartPrompt();
+        this.createMenu();
         this.createVersionInfo();
         this.setupInput();
         this.playEntryAnimation();
@@ -31,10 +43,7 @@ export class TitleScene extends Phaser.Scene {
      * 背景を作成
      */
     private createBackground(): void {
-        // グラデーション風の背景
         const bg = this.add.graphics();
-
-        // 上から下へのグラデーション（複数の矩形で表現）
         const colors = [0x1a1a2e, 0x16213e, 0x0f3460];
         const segmentHeight = GAME_HEIGHT / colors.length;
 
@@ -43,7 +52,6 @@ export class TitleScene extends Phaser.Scene {
             bg.fillRect(0, index * segmentHeight, GAME_WIDTH, segmentHeight + 1);
         });
 
-        // 星の装飾
         this.createStars();
     }
 
@@ -63,7 +71,6 @@ export class TitleScene extends Phaser.Scene {
             graphics.fillCircle(x, y, size);
         }
 
-        // 星のきらめきアニメーション
         this.tweens.add({
             targets: graphics,
             alpha: { from: 0.7, to: 1 },
@@ -80,7 +87,6 @@ export class TitleScene extends Phaser.Scene {
     private createTitleText(): void {
         const centerX = GAME_WIDTH / 2;
 
-        // メインタイトル
         this.titleText = this.add.text(centerX, 80, 'BBQ', {
             fontFamily: '"Press Start 2P", monospace',
             fontSize: '48px',
@@ -91,7 +97,6 @@ export class TitleScene extends Phaser.Scene {
         this.titleText.setOrigin(0.5);
         this.titleText.setAlpha(0);
 
-        // サブタイトル
         this.subtitleText = this.add.text(centerX, 130, 'Bird Battle Quest', {
             fontFamily: '"Press Start 2P", monospace',
             fontSize: '12px',
@@ -102,32 +107,66 @@ export class TitleScene extends Phaser.Scene {
     }
 
     /**
-     * スタートプロンプトを作成
+     * メニューを作成
      */
-    private createStartPrompt(): void {
-        this.startText = this.add.text(
-            GAME_WIDTH / 2,
-            GAME_HEIGHT - 80,
-            'PRESS SPACE OR TAP TO START',
+    private createMenu(): void {
+        const centerX = GAME_WIDTH / 2;
+        const menuStartY = GAME_HEIGHT - 120; // 少し上に上げる
+        const menuSpacing = 60; // 間隔を広げる
+
+        this.menuItems = [];
+
+        // セーブデータがある場合は「つづきから」を最初に表示
+        if (this.hasSaveData) {
+            const continueText = this.add.text(centerX, menuStartY, 'つづきから', {
+                fontFamily: '"Press Start 2P", monospace',
+                fontSize: '24px',
+                color: '#ffffff'
+            });
+            continueText.setOrigin(0.5);
+            continueText.setAlpha(0);
+            continueText.setData('action', 'continue');
+            this.menuItems.push(continueText);
+        }
+
+        // 「はじめから」は常に表示
+        const newGameY = this.hasSaveData ? menuStartY + menuSpacing : menuStartY;
+        const newGameText = this.add.text(centerX, newGameY, 'はじめから', {
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: '24px',
+            color: '#ffffff'
+        });
+        newGameText.setOrigin(0.5);
+        newGameText.setAlpha(0);
+        newGameText.setData('action', 'newgame');
+        this.menuItems.push(newGameText);
+
+        // カーソル作成
+        this.cursor = this.add.text(
+            centerX - 140, // 位置調整
+            this.menuItems[0].y,
+            '▶',
             {
                 fontFamily: '"Press Start 2P", monospace',
-                fontSize: '10px',
-                color: '#ffffff'
+                fontSize: '24px',
+                color: '#fbbf24'
             }
         );
-        this.startText.setOrigin(0.5);
-        this.startText.setAlpha(0);
+        this.cursor.setOrigin(0.5);
+        this.cursor.setAlpha(0);
 
-        // 点滅アニメーション
+        // カーソル点滅
         this.blinkTimer = this.time.addEvent({
-            delay: 500,
+            delay: 400,
             callback: () => {
-                if (this.startText.alpha > 0) {
-                    this.startText.setAlpha(this.startText.alpha === 1 ? 0.3 : 1);
+                if (this.cursor.alpha > 0) {
+                    this.cursor.setAlpha(this.cursor.alpha === 1 ? 0.3 : 1);
                 }
             },
             loop: true
         });
+
+        this.updateMenuSelection();
     }
 
     /**
@@ -151,18 +190,100 @@ export class TitleScene extends Phaser.Scene {
      * 入力のセットアップ
      */
     private setupInput(): void {
-        // キーボード入力
-        this.input.keyboard?.on('keydown-SPACE', () => {
-            this.startGame();
+        this.input.keyboard?.on('keydown-UP', () => this.moveSelection(-1));
+        this.input.keyboard?.on('keydown-W', () => this.moveSelection(-1));
+        this.input.keyboard?.on('keydown-DOWN', () => this.moveSelection(1));
+        this.input.keyboard?.on('keydown-S', () => this.moveSelection(1));
+
+        this.input.keyboard?.on('keydown-SPACE', () => this.confirmSelection());
+        this.input.keyboard?.on('keydown-ENTER', () => this.confirmSelection());
+        this.input.keyboard?.on('keydown-Z', () => this.confirmSelection());
+
+        // クリック入力（メニュー項目）
+        this.menuItems.forEach((item, index) => {
+            item.setInteractive({ useHandCursor: true });
+            item.on('pointerover', () => {
+                this.selectedIndex = index;
+                this.updateMenuSelection();
+            });
+            item.on('pointerdown', () => {
+                this.selectedIndex = index;
+                this.confirmSelection();
+            });
+        });
+    }
+
+    /**
+     * 選択を移動
+     */
+    private moveSelection(direction: number): void {
+        this.selectedIndex = Phaser.Math.Wrap(
+            this.selectedIndex + direction,
+            0,
+            this.menuItems.length
+        );
+        this.updateMenuSelection();
+    }
+
+    /**
+     * メニュー選択状態を更新
+     */
+    private updateMenuSelection(): void {
+        this.menuItems.forEach((item, index) => {
+            if (index === this.selectedIndex) {
+                item.setColor('#fbbf24');
+            } else {
+                item.setColor('#ffffff');
+            }
         });
 
-        this.input.keyboard?.on('keydown-ENTER', () => {
-            this.startGame();
-        });
+        if (this.cursor && this.menuItems[this.selectedIndex]) {
+            this.cursor.setY(this.menuItems[this.selectedIndex].y);
+        }
+    }
 
-        // タップ/クリック入力
-        this.input.on('pointerdown', () => {
-            this.startGame();
+    /**
+     * 選択を確定
+     */
+    private confirmSelection(): void {
+        const action = this.menuItems[this.selectedIndex].getData('action') as MenuOption;
+
+        this.input.keyboard?.removeAllKeys();
+        this.input.removeAllListeners();
+
+        if (action === 'continue') {
+            this.goToSaveLoadScene();
+        } else {
+            this.startNewGame();
+        }
+    }
+
+    /**
+     * セーブデータ選択画面へ
+     */
+    private goToSaveLoadScene(): void {
+        this.cameras.main.fadeOut(300, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => {
+            if (this.blinkTimer) {
+                this.blinkTimer.destroy();
+            }
+            this.scene.start('SaveLoadScene');
+        });
+    }
+
+    /**
+     * 新規ゲームを開始
+     */
+    private startNewGame(): void {
+        GameStateManager.getInstance().reset();
+        console.log('Starting new game');
+
+        this.cameras.main.fadeOut(500, 0, 0, 0);
+        this.cameras.main.once('camerafadeoutcomplete', () => {
+            if (this.blinkTimer) {
+                this.blinkTimer.destroy();
+            }
+            this.scene.start('MapScene');
         });
     }
 
@@ -170,7 +291,6 @@ export class TitleScene extends Phaser.Scene {
      * エントリーアニメーションを再生
      */
     private playEntryAnimation(): void {
-        // タイトルのフェードイン
         this.tweens.add({
             targets: this.titleText,
             alpha: 1,
@@ -179,7 +299,6 @@ export class TitleScene extends Phaser.Scene {
             ease: 'Back.easeOut'
         });
 
-        // サブタイトルのフェードイン（遅延）
         this.tweens.add({
             targets: this.subtitleText,
             alpha: 1,
@@ -188,32 +307,13 @@ export class TitleScene extends Phaser.Scene {
             ease: 'Power2'
         });
 
-        // スタートプロンプトのフェードイン（さらに遅延）
+        const menuTargets: Phaser.GameObjects.GameObject[] = [...this.menuItems, this.cursor];
         this.tweens.add({
-            targets: this.startText,
+            targets: menuTargets,
             alpha: 1,
             duration: 500,
             delay: 1200,
             ease: 'Power2'
-        });
-    }
-
-    /**
-     * ゲームを開始
-     */
-    private startGame(): void {
-        // 連打防止
-        this.input.keyboard?.removeAllKeys();
-        this.input.removeAllListeners();
-
-        // フェードアウトしてマップシーンへ
-        this.cameras.main.fadeOut(500, 0, 0, 0);
-
-        this.cameras.main.once('camerafadeoutcomplete', () => {
-            if (this.blinkTimer) {
-                this.blinkTimer.destroy();
-            }
-            this.scene.start('MapScene');
         });
     }
 

@@ -158,6 +158,17 @@ interface BreakableEnemy extends EnemyData {
 | タブレット | 768px - 1024px | 最適表示 |
 | PC | > 1024px | キーボード操作 |
 
+### 4.3 アートスタイル
+
+キャラクターデザイン（頭身）等のビジュアル表現は、以下の「オクトパストラベラー」風のドット絵スタイルを参考にする。
+
+- **参考URL**: [https://dotartplay.com/octopathtraveler-dot](https://dotartplay.com/octopathtraveler-dot)
+- **特徴**:
+  - 頭身を少し高めに設定（2.5〜3頭身）
+  - 陰影を強調したリッチなドット絵
+  - 地面に影を落とす
+
+
 ### 4.3 ATBゲージ位置調整（開発者向け注意事項）
 
 ATBゲージの位置がずれる問題が頻発するため、修正方法を記載します。

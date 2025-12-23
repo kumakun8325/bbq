@@ -2,6 +2,7 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const WorkboxPlugin = require('workbox-webpack-plugin');
 
 module.exports = (env, argv) => {
     const isDev = argv.mode === 'development';
@@ -81,6 +82,23 @@ module.exports = (env, argv) => {
                         noErrorOnMissing: true
                     }
                 ]
+            }),
+            new WorkboxPlugin.GenerateSW({
+                clientsClaim: true,
+                skipWaiting: true,
+                maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+                runtimeCaching: [
+                    {
+                        urlPattern: /\.(?:png|jpg|jpeg|svg|json|mp3)$/,
+                        handler: 'CacheFirst',
+                        options: {
+                            cacheName: 'assets-cache',
+                            expiration: {
+                                maxEntries: 100,
+                            },
+                        },
+                    },
+                ],
             })
         ],
         devServer: {
