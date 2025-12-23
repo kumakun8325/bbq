@@ -32,12 +32,13 @@ git branch -a
 
 | ブランチ名 | 機能 | 状態 |
 |-----------|------|------|
-| `feature/pwa-mobile-support` | PWA対応、スマホタッチ操作 | マージ待ち |
+| `feature/pwa-mobile-support` | PWA対応、スマホタッチ操作、20:9画面最適化 | ✅ マージ済 |
+| `feature/bp-system` | BPシステム（ブーストポイント） | マージ待ち |
 | `feature/save-load-system` | セーブ/ロード機能 | 作業中 |
-| `feature/level-up-system` | レベルアップシステム | マージ済 |
-| `feature/player-sprite` | 歩行アニメーション付きプレイヤースプライト | マージ済 |
-| `feature/battle-improvements` | バトルUI改善、ダメージポップアップ | マージ済 |
-| `feature/shield-break` | オクトパストラベラー風シールド/ブレイクシステム | マージ済 |
+| `feature/level-up-system` | レベルアップシステム | ✅ マージ済 |
+| `feature/player-sprite` | 歩行アニメーション付きプレイヤースプライト | ✅ マージ済 |
+| `feature/battle-improvements` | バトルUI改善、ダメージポップアップ | ✅ マージ済 |
+| `feature/shield-break` | オクトパストラベラー風シールド/ブレイクシステム | ✅ マージ済 |
 
 ## 5. セッションログ確認
 

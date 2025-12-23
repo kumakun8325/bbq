@@ -4,6 +4,39 @@
 
 ---
 
+## 2025-12-23（月）
+
+### 実施内容
+- **PWA画面最適化**
+  - 解像度を20:9（1280x576）に変更してPixel 9等の最新スマホに最適化
+  - スケールモードをFITに設定し、`expandParent: true`で画面にフィット
+  - マップ画面のカメラズームを解像度に応じて動的に計算
+  
+- **敵タッチ選択の修正**
+  - 敵スプライトのdepthを100に設定（cancelZone=50より上）
+  - `input.setTopOnly(false)`で複数オブジェクトへの入力を許可
+  - cancelZoneのdepthを-100に変更して確実に背面に配置
+  
+- **mainブランチにマージ**
+  - `feature/pwa-mobile-support`をmainにマージ完了
+
+### 変更ファイル
+- `src/config/gameConfig.ts` - 解像度変更（1280x576）、FITモード設定
+- `src/scenes/BattleScene.ts` - 敵タッチ選択修正、cancelZone depth調整
+- `src/scenes/MapScene.ts` - カメラズーム動的計算
+
+### 次回TODO
+- [ ] **TASK-026**: マルチヒット攻撃実装（BP消費で攻撃回数増加）
+- [ ] **TASK-027**: 弱点発見システム（初見敵は「?」表示）
+- [ ] **キャラ頭身変更**: オクトラ風（2.5〜3頭身）へのドット絵変更
+- [ ] `feature/bp-system`のmainへのマージ
+
+### ブランチ状態
+- **main**: PWA対応マージ完了 ✅
+- `feature/bp-system`: マージ待ち
+
+---
+
 ## 2025-12-18（木）
 
 ### 実施内容
@@ -19,17 +52,13 @@
 - `docs/SPECIFICATION.md` - アートスタイル追記
 
 ### 次回TODO
-- [ ] **バグ修正（PWA/Mobile）**:
-  - タッチ操作が反応しない問題の調査・修正
-  - UIサイズ（SHIELD, [?]）が大きすぎる問題の修正
-  - ATBバーが途中で止まる、一部キャラ（index 0, 1）が表示されない問題の修正
-- [ ] **キャラ頭身変更**:
-  - オクトラ風（2.5〜3頭身）へのドット絵変更（参考: https://dotartplay.com/octopathtraveler-dot）
+- [x] **バグ修正（PWA/Mobile）** ← 2025-12-23に解決
+- [ ] **キャラ頭身変更**
 - [ ] **TASK-026**: マルチヒット攻撃実装
 - [ ] **TASK-020**: 武器合成システム
 
 ### ブランチ状態
-- 現在: `feature/pwa-mobile-support` (修正中)
+- 完了: `feature/pwa-mobile-support` (mainにマージ済)
 - 完了: `feature/bp-system` (マージ待ち)
 
 ## 2025-12-16（月）
