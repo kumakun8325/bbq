@@ -224,6 +224,9 @@ export class BattleScene extends Phaser.Scene {
     // スプライトのスケール（解像度2倍対応：4倍）
     this.enemySprite.setScale(4);
 
+    // 敵スプライトのdepthを設定（cancelZone=50より上に配置）
+    this.enemySprite.setDepth(100);
+
     // アイドルアニメーションを再生
     const animKey = `${this.enemy.spriteKey}-idle`;
     if (this.anims.exists(animKey)) {
@@ -242,18 +245,18 @@ export class BattleScene extends Phaser.Scene {
     });
 
     // タッチ操作対応：敵をタップでターゲット選択・決定
-    // ヒット領域をスプライト全体に設定（originが0.5なので原点調整）
-    const enemyW = this.enemySprite.width;
-    const enemyH = this.enemySprite.height;
-    this.enemySprite.setInteractive({
-      useHandCursor: true,
-      hitArea: new Phaser.Geom.Rectangle(-enemyW / 2, -enemyH / 2, enemyW, enemyH),
-      hitAreaCallback: Phaser.Geom.Rectangle.Contains
-    });
-    this.enemySprite.on('pointerdown', () => {
+    // デフォルトのテクスチャベースのヒット検出を使用（スケーリングは自動で考慮される）
+    this.enemySprite.setInteractive({ useHandCursor: true });
+
+    // 入力の優先度を最高に設定
+    this.input.setTopOnly(false); // 複数オブジェクトへの入力を許可
+
+    this.enemySprite.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       console.log('Enemy tapped, battleState:', this.battleState, 'targetScope:', this.targetScope);
       // ターゲット選択中であれば決定
       if (this.battleState === 'selectTarget' && this.targetScope === 'single_enemy') {
+        // イベントの伝播を止めてcancelZoneに渡さない
+        pointer.event?.stopPropagation();
         this.decideTarget();
       }
     });
@@ -1287,16 +1290,16 @@ export class BattleScene extends Phaser.Scene {
   }
 
   /**
-   * キャンセル用タッチゾーンを作成（画面全体をカバー、背面に配置）
-   */
+ * キャンセル用タッチゾーンを作成（画面全体をカバー、背面に配置）
+ */
   private createCancelZone(): void {
     // 既存のキャンセルゾーンを削除
     this.destroyCancelZone();
 
-    // 画面全体をカバーするゾーン（depth低め）
+    // 画面全体をカバーするゾーン（depth非常に低く設定して、他のスプライトより確実に背面に）
     this.cancelZone = this.add.zone(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT);
     this.cancelZone.setInteractive({ useHandCursor: false });
-    this.cancelZone.setDepth(50); // スプライトより低い
+    this.cancelZone.setDepth(-100); // 敵スプライト(100)やパーティ(70-100)より確実に低い
 
     this.cancelZone.on('pointerdown', () => {
       if (this.battleState === 'selectTarget') {

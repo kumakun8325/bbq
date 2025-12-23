@@ -316,7 +316,14 @@ export class MapScene extends Phaser.Scene {
 
     private setupCamera(): void {
         this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
-        this.cameras.main.setZoom(2);
+
+        // ズームを解像度に応じて計算
+        // 元の設計: 960x640でズーム2 → 表示エリア480x320
+        // 同じ表示エリアを維持するために、現在の解像度に合わせてズームを調整
+        const baseViewWidth = 480; // 表示したいワールド幅
+        const zoom = GAME_WIDTH / baseViewWidth;
+        this.cameras.main.setZoom(zoom);
+
         this.cameras.main.setBounds(
             0,
             0,
